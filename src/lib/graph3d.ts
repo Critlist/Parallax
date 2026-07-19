@@ -249,8 +249,8 @@ export class Graph3DVisualization {
       .showNavInfo(false)
       .linkOpacity(0.4)
       .linkWidth(0.6)
-      .linkDirectionalParticles((l: any) => (l.type === "calls" ? 1 : 0))
-      .linkDirectionalParticleSpeed(0.005)
+      .linkDirectionalParticles((l: any) => linkParticleCount(l))
+      .linkDirectionalParticleSpeed((l: any) => linkParticleSpeed(l))
       .linkColor((l: any) =>
         l.confidence === "INFERRED" ? "#886644" : "#4A90E2",
       )
