@@ -21,6 +21,7 @@ import { GraphToolbar } from "./graph-viewer/GraphToolbar";
 import { Legend } from "./graph-viewer/Legend";
 import { LoadPanel } from "./graph-viewer/LoadPanel";
 import { NodeInspector } from "./graph-viewer/NodeInspector";
+import { NodeTooltip } from "./graph-viewer/NodeTooltip";
 import { SettingsMenu } from "./graph-viewer/SettingsMenu";
 import styles from "./graph-viewer/GraphViewer.module.css";
 
@@ -137,6 +138,10 @@ export default function GraphViewer() {
     frameMs: number;
   }>({ snapshot: null, fps: 0, frameMs: 0 });
   const [loadMs, setLoadMs] = useState<number | null>(null);
+  const [tooltip, setTooltip] = useState<{
+    node: GraphNode;
+    position: { x: number; y: number };
+  } | null>(null);
 
   const visibleGraph = useMemo(
     () =>
@@ -213,10 +218,26 @@ export default function GraphViewer() {
       .slice(0, MAX_SEARCH_RESULTS);
   }, [searchTerm, visibleGraph]);
 
+  const tooltipDegree = useMemo(() => {
+    if (!tooltip || !visibleGraph) return 0;
+    return visibleGraph.links.filter(
+      (link) =>
+        endpointId(link.source) === tooltip.node.id ||
+        endpointId(link.target) === tooltip.node.id,
+    ).length;
+  }, [tooltip, visibleGraph]);
+
   useEffect(() => {
     if (!containerRef.current) return;
     vizRef.current = new Graph3DVisualization(containerRef.current, {
       onNodeSelected: setSelected,
+      onNodeHovered: (node, position) => {
+        if (!node || !position) {
+          setTooltip(null);
+          return;
+        }
+        setTooltip({ node, position });
+      },
     });
 
     return () => {
@@ -296,6 +317,7 @@ export default function GraphViewer() {
     const data = fromGraphifyExport(raw);
     setStats(statsFor(raw));
     setSelected(null);
+    setTooltip(null);
     setSearchTerm("");
     setDisabledTypes(new Set());
     setDisabledCommunities(new Set());
@@ -491,6 +513,11 @@ export default function GraphViewer() {
           }}
         />
       )}
+      <NodeTooltip
+        node={tooltip?.node ?? null}
+        position={tooltip?.position ?? null}
+        degree={tooltipDegree}
+      />
     </div>
   );
 }

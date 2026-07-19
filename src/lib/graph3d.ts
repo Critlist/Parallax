@@ -36,6 +36,10 @@ export interface GraphData {
 
 export interface Graph3DVisualizationOptions {
   onNodeSelected?: (node: GraphNode) => void;
+  onNodeHovered?: (
+    node: GraphNode | null,
+    position: { x: number; y: number } | null,
+  ) => void;
 }
 
 interface HoverEdge {
@@ -157,6 +161,10 @@ export interface HoverHighlight {
   linkKeys: Set<string>;
 }
 
+export interface HoverNeighborhood extends HoverHighlight {
+  links: GraphLink[];
+}
+
 // A link endpoint is an id string before the force sim runs and a node object
 // (with `id`) afterward; normalize both to the id string.
 export function endpointId(endpoint: unknown): string {
@@ -201,9 +209,10 @@ function createHoverEdgeLine(source: Vec3, target: Vec3): THREE.Line {
   return new THREE.Line(geometry, material);
 }
 
-const EMPTY_HIGHLIGHT: HoverHighlight = {
+const EMPTY_NEIGHBORHOOD: HoverNeighborhood = {
   nodeIds: new Set(),
   linkKeys: new Set(),
+  links: [],
 };
 const HOVER_EDGE_COLOR = "#ffffff";
 const HOVER_EDGE_OPACITY = 0.86;
@@ -234,6 +243,37 @@ export function computeHoverHighlight(
     }
   }
   return { nodeIds, linkKeys };
+}
+
+export function buildHoverHighlightIndex(
+  data: GraphData,
+): Map<string, HoverNeighborhood> {
+  const index = new Map<string, HoverNeighborhood>();
+  for (const node of data.nodes) {
+    index.set(node.id, {
+      nodeIds: new Set([node.id]),
+      linkKeys: new Set(),
+      links: [],
+    });
+  }
+  for (const link of data.links) {
+    const source = endpointId(link.source);
+    const target = endpointId(link.target);
+    const key = linkKey(link.source, link.target);
+    const sourceNeighborhood = index.get(source);
+    if (sourceNeighborhood) {
+      sourceNeighborhood.nodeIds.add(target);
+      sourceNeighborhood.linkKeys.add(key);
+      sourceNeighborhood.links.push(link);
+    }
+    const targetNeighborhood = index.get(target);
+    if (targetNeighborhood) {
+      targetNeighborhood.nodeIds.add(source);
+      targetNeighborhood.linkKeys.add(key);
+      targetNeighborhood.links.push(link);
+    }
+  }
+  return index;
 }
 
 export const BASE_NODE_OPACITY = 0.9;
@@ -311,11 +351,13 @@ export class Graph3DVisualization {
   private graph: any;
   private container: HTMLElement;
   private onNodeSelected?: (node: GraphNode) => void;
+  private onNodeHovered?: Graph3DVisualizationOptions["onNodeHovered"];
   private nodesById = new Map<string, GraphNode>();
   private nodeMeshes = new Map<string, THREE.Mesh>();
   private hoverEdgeGroup = new THREE.Group();
   private hoverEdges: HoverEdge[] = [];
   private loadedData: GraphData | null = null;
+  private hoverIndex = new Map<string, HoverNeighborhood>();
   private hoveredId: string | null = null;
   private hoverEnabled = true;
   private engineRunning = false;
@@ -323,6 +365,8 @@ export class Graph3DVisualization {
   private settleMs: number | null = null;
   private resizeHandler: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private pointerPosition: { x: number; y: number } | null = null;
+  private pointerMoveHandler: ((event: MouseEvent) => void) | null = null;
 
   constructor(
     container: HTMLElement,
@@ -330,8 +374,10 @@ export class Graph3DVisualization {
   ) {
     this.container = container;
     this.onNodeSelected = options.onNodeSelected;
+    this.onNodeHovered = options.onNodeHovered;
     this.initializeGraph();
     this.setupResizeListener();
+    this.setupPointerListener();
   }
 
   private setupResizeListener(): void {
@@ -346,6 +392,13 @@ export class Graph3DVisualization {
 
     this.resizeObserver = new ResizeObserver(() => this.resizeHandler!());
     this.resizeObserver.observe(this.container);
+  }
+
+  private setupPointerListener(): void {
+    this.pointerMoveHandler = (event: MouseEvent) => {
+      this.pointerPosition = { x: event.clientX, y: event.clientY };
+    };
+    this.container.addEventListener("mousemove", this.pointerMoveHandler);
   }
 
   private handleResize(): void {
@@ -372,11 +425,7 @@ export class Graph3DVisualization {
       .linkColor((l: any) =>
         l.confidence === "INFERRED" ? "#886644" : "#4A90E2",
       )
-      .nodeLabel((n: any) =>
-        typeof n.group === "number"
-          ? `${n.name} (${n.type}, community ${n.group})`
-          : `${n.name} (${n.type})`,
-      )
+      .nodeLabel(() => "")
       .nodeThreeObject((node: any) => {
         const size = this.getNodeSize(node);
         const geometry = new THREE.SphereGeometry(size, 16, 16);
@@ -434,10 +483,10 @@ export class Graph3DVisualization {
     return TYPE_COLORS[node.type] || "#7ED321";
   }
 
-  private currentHoverHighlight(): HoverHighlight {
-    return this.hoveredId !== null && this.loadedData
-      ? computeHoverHighlight(this.loadedData, this.hoveredId)
-      : EMPTY_HIGHLIGHT;
+  private currentHoverHighlight(): HoverNeighborhood {
+    return this.hoveredId !== null
+      ? (this.hoverIndex.get(this.hoveredId) ?? EMPTY_NEIGHBORHOOD)
+      : EMPTY_NEIGHBORHOOD;
   }
 
   /**
@@ -447,9 +496,9 @@ export class Graph3DVisualization {
    * link + directional-particle system, which discards these in-place material
    * mutations (visible flash) and locks on large graphs. `3d-force-graph` runs
    * a continuous render loop, so mutating an existing material shows next frame
-   * on its own. Links keep their static styling; edge information is carried by
-   * link + directional-particle system. Incident edge emphasis is drawn by
-   * our own overlay group of line objects, which can be mutated directly.
+   * on its own. Links keep their static styling; incident edge emphasis is
+   * drawn by our own overlay group of line objects, which can be mutated
+   * directly.
    */
   private applyHoverHighlight(): void {
     const highlight = this.currentHoverHighlight();
@@ -466,15 +515,12 @@ export class Graph3DVisualization {
     this.applyHoverEdgeHighlight(highlight);
   }
 
-  private applyHoverEdgeHighlight(highlight: HoverHighlight): void {
+  private applyHoverEdgeHighlight(highlight: HoverNeighborhood): void {
     this.clearHoverEdges();
-    if (!this.hoverEnabled || this.hoveredId === null || !this.loadedData) {
+    if (!this.hoverEnabled || this.hoveredId === null) {
       return;
     }
-    for (const link of this.loadedData.links) {
-      if (!highlight.linkKeys.has(linkKey(link.source, link.target))) {
-        continue;
-      }
+    for (const link of highlight.links) {
       const source = endpointPosition(link.source);
       const target = endpointPosition(link.target);
       if (!source || !target) continue;
@@ -525,11 +571,13 @@ export class Graph3DVisualization {
       this.container.style.cursor = "default";
       this.hoveredId = null;
       this.applyHoverHighlight();
+      this.onNodeHovered?.(null, this.pointerPosition);
       return;
     }
     this.container.style.cursor = node ? "pointer" : "default";
     this.hoveredId = node ? node.id : null;
     this.applyHoverHighlight();
+    this.onNodeHovered?.(node ?? null, this.pointerPosition);
   }
 
   private handleEngineStop(): void {
@@ -542,6 +590,7 @@ export class Graph3DVisualization {
   public loadData(data: GraphData): void {
     this.nodesById = new Map(data.nodes.map((node) => [node.id, node]));
     this.loadedData = data;
+    this.hoverIndex = buildHoverHighlightIndex(data);
     // Drop meshes from any previous graph; graphData() rebuilds them via
     // nodeThreeObject for the new node set.
     this.nodeMeshes.clear();
@@ -609,6 +658,11 @@ export class Graph3DVisualization {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
     }
+    if (this.pointerMoveHandler) {
+      this.container.removeEventListener("mousemove", this.pointerMoveHandler);
+      this.pointerMoveHandler = null;
+      this.pointerPosition = null;
+    }
     if (this.graph) {
       const renderer = this.graph.renderer?.();
       this.graph._destructor();
@@ -627,6 +681,7 @@ export class Graph3DVisualization {
       this.nodeMeshes.clear();
       this.clearHoverEdges();
       this.loadedData = null;
+      this.hoverIndex.clear();
       this.hoveredId = null;
       this.hoverEnabled = true;
       this.engineRunning = false;

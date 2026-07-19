@@ -4,6 +4,7 @@ const captured = vi.hoisted(() => ({
   particles: { current: null as ((l: unknown) => number) | null },
   hover: { current: null as ((n: unknown) => void) | null },
   nodeObj: { current: null as ((n: unknown) => unknown) | null },
+  nodeLabel: { current: null as ((n: unknown) => string) | null },
   linkColor: { current: null as ((l: unknown) => string) | null },
   linkWidth: { current: null as ((l: unknown) => number) | null },
   engineTick: { current: null as (() => void) | null },
@@ -19,7 +20,6 @@ vi.mock("3d-force-graph", () => {
     "showNavInfo",
     "linkOpacity",
     "linkDirectionalParticleSpeed",
-    "nodeLabel",
     "onNodeClick",
     "graphData",
     "cameraPosition",
@@ -54,6 +54,10 @@ vi.mock("3d-force-graph", () => {
       captured.nodeObj.current = fn;
       return graph;
     };
+    graph.nodeLabel = (fn: (n: unknown) => string) => {
+      captured.nodeLabel.current = fn;
+      return graph;
+    };
     graph.onNodeHover = (fn: (n: unknown) => void) => {
       captured.hover.current = fn;
       return graph;
@@ -76,6 +80,7 @@ afterEach(() => {
   captured.particles.current = null;
   captured.hover.current = null;
   captured.nodeObj.current = null;
+  captured.nodeLabel.current = null;
   captured.linkColor.current = null;
   captured.linkWidth.current = null;
   captured.engineTick.current = null;
@@ -111,6 +116,30 @@ function buildMeshes() {
 }
 
 describe("Graph3DVisualization hover affordance", () => {
+  it("disables the library tooltip so only the React tooltip renders", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+
+    expect(captured.nodeLabel.current?.({ name: "a", type: "code" })).toBe("");
+    viz.dispose();
+  });
+
+  it("reports hovered nodes with the last pointer position", () => {
+    const container = document.createElement("div");
+    const onNodeHovered = vi.fn();
+    const viz = new Graph3DVisualization(container, { onNodeHovered });
+    const node = { id: "a", name: "a", type: "code" };
+
+    container.dispatchEvent(
+      new MouseEvent("mousemove", { clientX: 120, clientY: 80 }),
+    );
+    captured.hover.current?.(node);
+    captured.hover.current?.(null);
+
+    expect(onNodeHovered).toHaveBeenNthCalledWith(1, node, { x: 120, y: 80 });
+    expect(onNodeHovered).toHaveBeenNthCalledWith(2, null, { x: 120, y: 80 });
+    viz.dispose();
+  });
+
   it("lights the hovered node and dims non-neighbors", () => {
     const viz = new Graph3DVisualization(document.createElement("div"));
     viz.loadData(data);

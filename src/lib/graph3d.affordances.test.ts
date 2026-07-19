@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildHoverHighlightIndex,
   computeHoverHighlight,
   linkParticleCount,
   linkParticleSpeed,
@@ -90,6 +91,20 @@ describe("computeHoverHighlight", () => {
     const h = computeHoverHighlight(simGraph, "a");
     expect(h.nodeIds.has("b")).toBe(true);
     expect(h.linkKeys.has("a->b")).toBe(true);
+  });
+});
+
+describe("buildHoverHighlightIndex", () => {
+  it("precomputes each node neighborhood and incident links", () => {
+    const index = buildHoverHighlightIndex(graph);
+
+    const a = index.get("a");
+    expect([...(a?.nodeIds ?? [])].sort()).toEqual(["a", "b", "c"]);
+    expect(a?.links).toHaveLength(2);
+
+    const d = index.get("d");
+    expect([...(d?.nodeIds ?? [])]).toEqual(["d"]);
+    expect(d?.links).toHaveLength(0);
   });
 });
 

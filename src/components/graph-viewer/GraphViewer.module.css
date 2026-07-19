@@ -402,6 +402,37 @@
   font-variant-numeric: tabular-nums;
 }
 
+.nodeTooltip {
+  position: fixed;
+  z-index: 20;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(12, 12, 12, 0.92);
+  color: #f0f0f0;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.tooltipTitle {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.tooltipMeta,
+.tooltipPath {
+  color: rgba(238, 238, 238, 0.72);
+}
+
+.tooltipPath {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 760px) {
   .toolbar {
     top: auto;

@@ -18,6 +18,7 @@ const { graphInstances } = vi.hoisted(() => ({
     setHoverEnabled: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     selectNode: (node: unknown) => void;
+    hoverNode: (node: unknown, position?: { x: number; y: number }) => void;
   }>,
 }));
 
@@ -48,12 +49,21 @@ vi.mock("@/lib/graph3d", async (importOriginal) => {
       }));
       dispose = vi.fn();
       selectNode: (node: unknown) => void;
+      hoverNode: (node: unknown, position?: { x: number; y: number }) => void;
 
       constructor(
         _container: HTMLElement,
-        options?: { onNodeSelected?: (node: unknown) => void },
+        options?: {
+          onNodeSelected?: (node: unknown) => void;
+          onNodeHovered?: (
+            node: unknown,
+            position?: { x: number; y: number },
+          ) => void;
+        },
       ) {
         this.selectNode = (node: unknown) => options?.onNodeSelected?.(node);
+        this.hoverNode = (node: unknown, position = { x: 120, y: 80 }) =>
+          options?.onNodeHovered?.(node, position);
         graphInstances.push(this);
       }
     },
@@ -154,6 +164,46 @@ describe("GraphViewer file loading", () => {
     fireEvent.click(hover);
     expect(hover).not.toBeChecked();
     expect(graphInstances[0].setHoverEnabled).toHaveBeenLastCalledWith(false);
+  });
+
+  it("shows a React tooltip for the hovered node", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [
+        {
+          id: "a",
+          label: "main()",
+          file_type: "code",
+          community: 0,
+          file_path: "src/main.ts",
+        },
+        { id: "b", label: "Concept", file_type: "concept", community: 0 },
+      ],
+      links: [{ source: "a", target: "b", relation: "references" }],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/2 nodes .* 1 edges/i);
+    graphInstances[0].hoverNode({
+      id: "a",
+      name: "main()",
+      type: "code",
+      filePath: "src/main.ts",
+      group: 0,
+    });
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("main()");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("code");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("degree: 1");
+
+    graphInstances[0].hoverNode(null);
+    await waitFor(() =>
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument(),
+    );
   });
 
   it("does not subscribe to a window-level node selection event", () => {
