@@ -23,6 +23,12 @@ the browser session.
 
 Licensed under MIT. See `LICENSE`.
 
+## Screenshots
+
+![Dense large Graphify export rendered in Parallax](public/screenshots/parallax-large-dense.png)
+
+![Zoomed-out large Graphify export fit in the Parallax viewport](public/screenshots/parallax-large-fit.png)
+
 ## Architecture
 
 ```text
