@@ -66,4 +66,5 @@ Thumbs.db
 *.key
 
 # Agent tools
+.superpowers/
 docs/superpowers/
