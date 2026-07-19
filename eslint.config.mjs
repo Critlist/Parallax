@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Temp files from the remember plugin.
     ".remember/**",
+    // Local benchmark datasets and cloned third-party source repos.
+    "local-graphs/**",
   ]),
 ]);
 

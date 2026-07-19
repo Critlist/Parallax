@@ -23,6 +23,7 @@ vi.mock("3d-force-graph", () => {
     "linkWidth",
     "linkDirectionalParticles",
     "linkDirectionalParticleSpeed",
+    "linkDirectionalParticleResolution",
     "linkColor",
     "nodeLabel",
     "nodeThreeObject",
@@ -33,6 +34,11 @@ vi.mock("3d-force-graph", () => {
   const makeGraph = () => {
     const graph: Record<string, unknown> = {
       scene: () => ({ add: () => {} }),
+      renderer: () => ({
+        setPixelRatio: vi.fn(),
+        forceContextLoss: vi.fn(),
+        domElement: document.createElement("canvas"),
+      }),
       cameraPosition: vi.fn(),
       graphData: vi.fn(),
       zoomToFit: vi.fn(),

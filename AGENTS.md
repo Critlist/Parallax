@@ -21,17 +21,17 @@ Pipeline: `Graphify export → graphifyAdapter → GraphData → Graph3DVisualiz
 
 ## Commands
 
-| Task                     | Command                               |
-| ------------------------ | ------------------------------------- |
-| Install                  | `bun install`                         |
-| Dev server               | `bun run dev` → http://localhost:3000 |
-| Run all tests (one-shot) | `bun run test`                        |
-| Run one test file        | `bun run test <path>`                 |
-| Watch tests              | `bun run test:watch`                  |
-| Typecheck                | `bun run typecheck`                   |
-| Lint                     | `bun run lint`                        |
-| Format (write)           | `bun run format`                      |
-| Production build         | `bun run build`                       |
+| Task                     | Command                                 |
+| ------------------------ | --------------------------------------- |
+| Install                  | `bun install`                           |
+| Dev server               | `bun run dev` → <http://localhost:3000> |
+| Run all tests (one-shot) | `bun run test`                          |
+| Run one test file        | `bun run test <path>`                   |
+| Watch tests              | `bun run test:watch`                    |
+| Typecheck                | `bun run typecheck`                     |
+| Lint                     | `bun run lint`                          |
+| Format (write)           | `bun run format`                        |
+| Production build         | `bun run build`                         |
 
 Run `bun run format` before every commit. Before declaring a task done, confirm `bun run test && bun run typecheck && bun run lint` are all green — evidence before assertions.
 

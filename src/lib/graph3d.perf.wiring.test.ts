@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const captured = vi.hoisted(() => ({
   engineTick: { current: null as (() => void) | null },
   engineStop: { current: null as (() => void) | null },
+  particleResolution: vi.fn(),
+  pixelRatio: vi.fn(),
 }));
 
 vi.mock("3d-force-graph", () => {
@@ -15,6 +17,7 @@ vi.mock("3d-force-graph", () => {
     "linkWidth",
     "linkDirectionalParticles",
     "linkDirectionalParticleSpeed",
+    "linkDirectionalParticleResolution",
     "linkColor",
     "nodeLabel",
     "nodeThreeObject",
@@ -36,6 +39,7 @@ vi.mock("3d-force-graph", () => {
         },
       }),
       renderer: () => ({
+        setPixelRatio: captured.pixelRatio,
         forceContextLoss: vi.fn(),
         domElement: document.createElement("canvas"),
         info: {
@@ -51,6 +55,10 @@ vi.mock("3d-force-graph", () => {
       _destructor: vi.fn(),
     };
     for (const b of builders) graph[b] = () => graph;
+    graph.linkDirectionalParticleResolution = (value: number) => {
+      captured.particleResolution(value);
+      return graph;
+    };
     graph.onEngineTick = (handler: () => void) => {
       captured.engineTick.current = handler;
       return graph;
@@ -71,6 +79,8 @@ afterEach(() => {
   vi.clearAllMocks();
   captured.engineTick.current = null;
   captured.engineStop.current = null;
+  captured.particleResolution.mockClear();
+  captured.pixelRatio.mockClear();
 });
 
 describe("Graph3DVisualization engine state", () => {
@@ -96,6 +106,24 @@ describe("Graph3DVisualization engine state", () => {
 });
 
 describe("getPerfSnapshot", () => {
+  it("caps renderer pixel ratio and lowers particle geometry resolution", () => {
+    const originalRatio = window.devicePixelRatio;
+    Object.defineProperty(window, "devicePixelRatio", {
+      configurable: true,
+      value: 2,
+    });
+    const viz = new Graph3DVisualization(document.createElement("div"));
+
+    expect(captured.pixelRatio).toHaveBeenCalledWith(1.25);
+    expect(captured.particleResolution).toHaveBeenCalledWith(2);
+
+    viz.dispose();
+    Object.defineProperty(window, "devicePixelRatio", {
+      configurable: true,
+      value: originalRatio,
+    });
+  });
+
   it("reports renderer.info counters, counts, and particle total", () => {
     const viz = new Graph3DVisualization(document.createElement("div"));
     viz.loadData({

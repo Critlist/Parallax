@@ -24,6 +24,7 @@ vi.mock("3d-force-graph", () => {
     "linkWidth",
     "linkDirectionalParticles",
     "linkDirectionalParticleSpeed",
+    "linkDirectionalParticleResolution",
     "linkColor",
     "nodeLabel",
     "nodeThreeObject",
@@ -35,7 +36,11 @@ vi.mock("3d-force-graph", () => {
   const makeGraph = () => {
     const domElement = document.createElement("canvas");
     document.body.appendChild(domElement);
-    const rendererStub = { forceContextLoss: vi.fn(), domElement };
+    const rendererStub = {
+      forceContextLoss: vi.fn(),
+      setPixelRatio: vi.fn(),
+      domElement,
+    };
     lastRenderer.current = rendererStub;
     const graph: Record<string, unknown> = {
       scene: () => ({ add: () => {} }),

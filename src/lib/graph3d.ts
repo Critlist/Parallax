@@ -42,10 +42,51 @@ export interface Graph3DVisualizationOptions {
   ) => void;
 }
 
-interface HoverEdge {
-  line: THREE.Line;
-  source: Vec3;
-  target: Vec3;
+interface HoverEdgeBatch {
+  segments: THREE.LineSegments;
+  sources: Vec3[];
+  targets: Vec3[];
+}
+
+interface NodeMaterialSet {
+  normal: THREE.MeshLambertMaterial;
+  dimmed: THREE.MeshLambertMaterial;
+  lit: THREE.MeshLambertMaterial;
+}
+
+const NODE_GEOMETRY_RADIUS = 1;
+const NODE_GEOMETRY_SEGMENTS = 8;
+const NODE_GEOMETRY_RINGS = 8;
+const MAX_DEVICE_PIXEL_RATIO = 1.25;
+const LARGE_GRAPH_PARTICLE_BUDGET = 6000;
+const LINK_PARTICLE_RESOLUTION = 2;
+const RENDER_PARTICLE_COUNT = "__parallaxParticleCount";
+const OWNED_DISPOSE = Symbol("parallaxOwnedDispose");
+
+type ProtectedDisposable<T extends { dispose: () => void }> = T & {
+  [OWNED_DISPOSE]?: () => void;
+};
+
+function protectSharedDisposable<T extends { dispose: () => void }>(
+  resource: T,
+): ProtectedDisposable<T> {
+  const protectedResource = resource as ProtectedDisposable<T>;
+  if (!protectedResource[OWNED_DISPOSE]) {
+    protectedResource[OWNED_DISPOSE] = protectedResource.dispose.bind(resource);
+    protectedResource.dispose = () => {};
+  }
+  return protectedResource;
+}
+
+function disposeOwnedSharedResource(resource: { dispose: () => void }): void {
+  const protectedResource = resource as ProtectedDisposable<typeof resource>;
+  const dispose = protectedResource[OWNED_DISPOSE];
+  if (dispose) {
+    protectedResource[OWNED_DISPOSE] = undefined;
+    dispose();
+  } else {
+    resource.dispose();
+  }
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -95,6 +136,8 @@ export function linkParticleCount(link: {
   type?: string;
   confidence?: string;
 }): number {
+  const renderCount = (link as Record<string, unknown>)[RENDER_PARTICLE_COUNT];
+  if (typeof renderCount === "number") return renderCount;
   if (link.type === "calls") return 3;
   if (link.confidence === "EXTRACTED") return 2;
   return 1;
@@ -110,6 +153,62 @@ export function sumParticleCount(
   return links.reduce((total, link) => total + linkParticleCount(link), 0);
 }
 
+function desiredParticleCount(link: { type?: string; confidence?: string }) {
+  if (link.type === "calls") return 3;
+  if (link.confidence === "EXTRACTED") return 2;
+  return 1;
+}
+
+function particlePriority(link: { type?: string; confidence?: string }) {
+  if (link.type === "calls") return 3;
+  if (link.confidence === "EXTRACTED") return 2;
+  if (
+    link.type === "references" ||
+    link.type === "imports" ||
+    link.type === "imports_from"
+  ) {
+    return 1;
+  }
+  return 0;
+}
+
+export function assignParticleBudget(
+  links: Array<{ type?: string; confidence?: string; [key: string]: unknown }>,
+  budget = LARGE_GRAPH_PARTICLE_BUDGET,
+): void {
+  const desired = links.map((link) => desiredParticleCount(link));
+  const desiredTotal = desired.reduce((total, count) => total + count, 0);
+  if (desiredTotal <= budget) {
+    links.forEach((link, index) => {
+      link[RENDER_PARTICLE_COUNT] = desired[index];
+    });
+    return;
+  }
+
+  links.forEach((link) => {
+    link[RENDER_PARTICLE_COUNT] = 0;
+  });
+
+  let remaining = budget;
+  const ordered = links
+    .map((link, index) => ({
+      link,
+      index,
+      priority: particlePriority(link),
+      desired: desired[index],
+    }))
+    .sort((a, b) => b.priority - a.priority || a.index - b.index);
+
+  for (let pass = 1; pass <= 3 && remaining > 0; pass += 1) {
+    for (const item of ordered) {
+      if (remaining <= 0) break;
+      if (item.desired < pass) continue;
+      item.link[RENDER_PARTICLE_COUNT] = pass;
+      remaining -= 1;
+    }
+  }
+}
+
 // renderer.info tracks geometries and textures but NOT materials, so derive
 // the active material count by traversing the scene for unique instances.
 export function countSceneMaterials(scene: {
@@ -123,6 +222,31 @@ export function countSceneMaterials(scene: {
     else materials.add(material);
   });
   return materials.size;
+}
+
+function createNodeMaterial(
+  color: string,
+  opacity: number,
+  emissiveIntensity = 0,
+): THREE.MeshLambertMaterial {
+  return protectSharedDisposable(
+    new THREE.MeshLambertMaterial({
+      color,
+      transparent: true,
+      opacity,
+      emissive:
+        emissiveIntensity > 0
+          ? new THREE.Color(color)
+          : new THREE.Color(0x000000),
+      emissiveIntensity,
+    }),
+  );
+}
+
+function disposeNodeMaterialSet(materials: NodeMaterialSet): void {
+  disposeOwnedSharedResource(materials.normal);
+  disposeOwnedSharedResource(materials.dimmed);
+  disposeOwnedSharedResource(materials.lit);
 }
 
 export interface FpsMeter {
@@ -195,18 +319,36 @@ function endpointPosition(endpoint: unknown): Vec3 | null {
   return candidate as Vec3;
 }
 
-function createHoverEdgeLine(source: Vec3, target: Vec3): THREE.Line {
-  const geometry = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(source.x, source.y, source.z),
-    new THREE.Vector3(target.x, target.y, target.z),
-  ]);
+function createHoverEdgeSegments(links: GraphLink[]): HoverEdgeBatch | null {
+  const sources: Vec3[] = [];
+  const targets: Vec3[] = [];
+  const positions: number[] = [];
+  for (const link of links) {
+    const source = endpointPosition(link.source);
+    const target = endpointPosition(link.target);
+    if (!source || !target) continue;
+    sources.push(source);
+    targets.push(target);
+    positions.push(source.x, source.y, source.z, target.x, target.y, target.z);
+  }
+  if (sources.length === 0) return null;
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
   const material = new THREE.LineBasicMaterial({
     color: HOVER_EDGE_COLOR,
     transparent: true,
     opacity: HOVER_EDGE_OPACITY,
     linewidth: HOVER_EDGE_WIDTH,
   });
-  return new THREE.Line(geometry, material);
+  return {
+    segments: new THREE.LineSegments(geometry, material),
+    sources,
+    targets,
+  };
 }
 
 const EMPTY_NEIGHBORHOOD: HoverNeighborhood = {
@@ -215,8 +357,9 @@ const EMPTY_NEIGHBORHOOD: HoverNeighborhood = {
   links: [],
 };
 const HOVER_EDGE_COLOR = "#ffffff";
-const HOVER_EDGE_OPACITY = 0.86;
+const HOVER_EDGE_OPACITY = 0.58;
 const HOVER_EDGE_WIDTH = 2;
+const MAX_HOVER_OVERLAY_LINKS = 160;
 
 /**
  * The hover affordance answers "what is this node connected to?" — the hovered
@@ -276,6 +419,22 @@ export function buildHoverHighlightIndex(
   return index;
 }
 
+export function selectHoverOverlayLinks(
+  links: GraphLink[],
+  maxLinks = MAX_HOVER_OVERLAY_LINKS,
+): GraphLink[] {
+  if (links.length <= maxLinks) return links;
+  return links
+    .map((link, index) => ({
+      link,
+      index,
+      priority: particlePriority(link),
+    }))
+    .sort((a, b) => b.priority - a.priority || a.index - b.index)
+    .slice(0, maxLinks)
+    .map((item) => item.link);
+}
+
 export const BASE_NODE_OPACITY = 0.9;
 const DIMMED_NODE_OPACITY = 0.15;
 const LIT_EMISSIVE_INTENSITY = 0.6;
@@ -283,6 +442,7 @@ const LIT_EMISSIVE_INTENSITY = 0.6;
 export interface NodeEmphasis {
   opacity: number;
   emissiveIntensity: number;
+  variant: "normal" | "dimmed" | "lit";
 }
 
 export interface PerfSnapshot {
@@ -310,15 +470,31 @@ export function nodeEmphasis(
   highlight: HoverHighlight,
 ): NodeEmphasis {
   if (hoveredId === null || highlight.nodeIds.size === 0) {
-    return { opacity: BASE_NODE_OPACITY, emissiveIntensity: 0 };
+    return {
+      opacity: BASE_NODE_OPACITY,
+      emissiveIntensity: 0,
+      variant: "normal",
+    };
   }
   if (nodeId === hoveredId) {
-    return { opacity: 1, emissiveIntensity: LIT_EMISSIVE_INTENSITY };
+    return {
+      opacity: 1,
+      emissiveIntensity: LIT_EMISSIVE_INTENSITY,
+      variant: "lit",
+    };
   }
   if (highlight.nodeIds.has(nodeId)) {
-    return { opacity: BASE_NODE_OPACITY, emissiveIntensity: 0 };
+    return {
+      opacity: BASE_NODE_OPACITY,
+      emissiveIntensity: 0,
+      variant: "normal",
+    };
   }
-  return { opacity: DIMMED_NODE_OPACITY, emissiveIntensity: 0 };
+  return {
+    opacity: DIMMED_NODE_OPACITY,
+    emissiveIntensity: 0,
+    variant: "dimmed",
+  };
 }
 
 interface Vec3 {
@@ -354,8 +530,17 @@ export class Graph3DVisualization {
   private onNodeHovered?: Graph3DVisualizationOptions["onNodeHovered"];
   private nodesById = new Map<string, GraphNode>();
   private nodeMeshes = new Map<string, THREE.Mesh>();
+  private nodeMaterialKeys = new Map<string, string>();
+  private nodeMaterialPool = new Map<string, NodeMaterialSet>();
+  private nodeGeometry = protectSharedDisposable(
+    new THREE.SphereGeometry(
+      NODE_GEOMETRY_RADIUS,
+      NODE_GEOMETRY_SEGMENTS,
+      NODE_GEOMETRY_RINGS,
+    ),
+  );
   private hoverEdgeGroup = new THREE.Group();
-  private hoverEdges: HoverEdge[] = [];
+  private hoverEdgeBatch: HoverEdgeBatch | null = null;
   private loadedData: GraphData | null = null;
   private hoverIndex = new Map<string, HoverNeighborhood>();
   private hoveredId: string | null = null;
@@ -421,6 +606,7 @@ export class Graph3DVisualization {
       .linkOpacity(0.4)
       .linkWidth(0.6)
       .linkDirectionalParticles((l: any) => linkParticleCount(l))
+      .linkDirectionalParticleResolution(LINK_PARTICLE_RESOLUTION)
       .linkDirectionalParticleSpeed((l: any) => linkParticleSpeed(l))
       .linkColor((l: any) =>
         l.confidence === "INFERRED" ? "#886644" : "#4A90E2",
@@ -428,16 +614,12 @@ export class Graph3DVisualization {
       .nodeLabel(() => "")
       .nodeThreeObject((node: any) => {
         const size = this.getNodeSize(node);
-        const geometry = new THREE.SphereGeometry(size, 16, 16);
-        const material = new THREE.MeshLambertMaterial({
-          color: this.getNodeColor(node),
-          transparent: true,
-          opacity: BASE_NODE_OPACITY,
-          emissive: new THREE.Color(0x000000),
-          emissiveIntensity: 0,
-        });
-        const mesh = new THREE.Mesh(geometry, material);
+        const color = this.getNodeColor(node);
+        const material = this.getNodeMaterialSet(color).normal;
+        const mesh = new THREE.Mesh(this.nodeGeometry, material);
+        mesh.scale.setScalar(size);
         this.nodeMeshes.set(node.id, mesh);
+        this.nodeMaterialKeys.set(node.id, color);
         return mesh;
       })
       .onNodeClick(this.handleNodeClick.bind(this))
@@ -447,6 +629,12 @@ export class Graph3DVisualization {
         this.updateHoverEdgePositions();
       })
       .onEngineStop(() => this.handleEngineStop());
+
+    this.graph
+      .renderer()
+      ?.setPixelRatio?.(
+        Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO),
+      );
 
     const scene = this.graph.scene();
     scene.add(this.hoverEdgeGroup);
@@ -483,6 +671,27 @@ export class Graph3DVisualization {
     return TYPE_COLORS[node.type] || "#7ED321";
   }
 
+  private getNodeMaterialSet(color: string): NodeMaterialSet {
+    const existing = this.nodeMaterialPool.get(color);
+    if (existing) return existing;
+
+    const materials: NodeMaterialSet = {
+      normal: createNodeMaterial(color, BASE_NODE_OPACITY),
+      dimmed: createNodeMaterial(color, DIMMED_NODE_OPACITY),
+      lit: createNodeMaterial(color, 1, LIT_EMISSIVE_INTENSITY),
+    };
+    this.nodeMaterialPool.set(color, materials);
+    return materials;
+  }
+
+  private materialForNodeVariant(
+    nodeId: string,
+    variant: NodeEmphasis["variant"],
+  ): THREE.MeshLambertMaterial {
+    const color = this.nodeMaterialKeys.get(nodeId);
+    return this.getNodeMaterialSet(color ?? "#7ED321")[variant];
+  }
+
   private currentHoverHighlight(): HoverNeighborhood {
     return this.hoveredId !== null
       ? (this.hoverIndex.get(this.hoveredId) ?? EMPTY_NEIGHBORHOOD)
@@ -504,13 +713,7 @@ export class Graph3DVisualization {
     const highlight = this.currentHoverHighlight();
     for (const [id, mesh] of this.nodeMeshes) {
       const emphasis = nodeEmphasis(id, this.hoveredId, highlight);
-      const material = mesh.material as THREE.MeshLambertMaterial;
-      material.opacity = emphasis.opacity;
-      material.emissiveIntensity = emphasis.emissiveIntensity;
-      material.emissive =
-        emphasis.emissiveIntensity > 0
-          ? material.color.clone()
-          : new THREE.Color(0x000000);
+      mesh.material = this.materialForNodeVariant(id, emphasis.variant);
     }
     this.applyHoverEdgeHighlight(highlight);
   }
@@ -520,25 +723,27 @@ export class Graph3DVisualization {
     if (!this.hoverEnabled || this.hoveredId === null) {
       return;
     }
-    for (const link of highlight.links) {
-      const source = endpointPosition(link.source);
-      const target = endpointPosition(link.target);
-      if (!source || !target) continue;
-      const line = createHoverEdgeLine(source, target);
-      this.hoverEdges.push({ line, source, target });
-      this.hoverEdgeGroup.add(line);
-    }
+    const batch = createHoverEdgeSegments(
+      selectHoverOverlayLinks(highlight.links),
+    );
+    if (!batch) return;
+    this.hoverEdgeBatch = batch;
+    this.hoverEdgeGroup.add(batch.segments);
   }
 
   private updateHoverEdgePositions(): void {
-    for (const edge of this.hoverEdges) {
-      const positions = edge.line.geometry.getAttribute("position");
-      if (!positions) continue;
-      positions.setXYZ(0, edge.source.x, edge.source.y, edge.source.z);
-      positions.setXYZ(1, edge.target.x, edge.target.y, edge.target.z);
-      positions.needsUpdate = true;
-      edge.line.geometry.computeBoundingSphere();
+    if (!this.hoverEdgeBatch) return;
+    const positions =
+      this.hoverEdgeBatch.segments.geometry.getAttribute("position");
+    if (!positions) return;
+    for (let i = 0; i < this.hoverEdgeBatch.sources.length; i += 1) {
+      const source = this.hoverEdgeBatch.sources[i];
+      const target = this.hoverEdgeBatch.targets[i];
+      positions.setXYZ(i * 2, source.x, source.y, source.z);
+      positions.setXYZ(i * 2 + 1, target.x, target.y, target.z);
     }
+    positions.needsUpdate = true;
+    this.hoverEdgeBatch.segments.geometry.computeBoundingSphere();
   }
 
   private clearHoverEdges(): void {
@@ -558,7 +763,7 @@ export class Graph3DVisualization {
         material?.dispose?.();
       }
     }
-    this.hoverEdges = [];
+    this.hoverEdgeBatch = null;
   }
 
   private handleNodeClick(node: any): void {
@@ -591,9 +796,11 @@ export class Graph3DVisualization {
     this.nodesById = new Map(data.nodes.map((node) => [node.id, node]));
     this.loadedData = data;
     this.hoverIndex = buildHoverHighlightIndex(data);
+    assignParticleBudget(data.links);
     // Drop meshes from any previous graph; graphData() rebuilds them via
     // nodeThreeObject for the new node set.
     this.nodeMeshes.clear();
+    this.nodeMaterialKeys.clear();
     this.hoveredId = null;
     this.container.style.cursor = "default";
     this.clearHoverEdges();
@@ -679,6 +886,12 @@ export class Graph3DVisualization {
       this.graph = null;
       this.nodesById.clear();
       this.nodeMeshes.clear();
+      this.nodeMaterialKeys.clear();
+      for (const materials of this.nodeMaterialPool.values()) {
+        disposeNodeMaterialSet(materials);
+      }
+      this.nodeMaterialPool.clear();
+      disposeOwnedSharedResource(this.nodeGeometry);
       this.clearHoverEdges();
       this.loadedData = null;
       this.hoverIndex.clear();

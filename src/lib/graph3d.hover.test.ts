@@ -7,6 +7,8 @@ const captured = vi.hoisted(() => ({
   nodeLabel: { current: null as ((n: unknown) => string) | null },
   linkColor: { current: null as ((l: unknown) => string) | null },
   linkWidth: { current: null as ((l: unknown) => number) | null },
+  particleResolution: vi.fn(),
+  pixelRatio: vi.fn(),
   engineTick: { current: null as (() => void) | null },
   sceneAdds: [] as unknown[],
   refresh: vi.fn(),
@@ -20,6 +22,7 @@ vi.mock("3d-force-graph", () => {
     "showNavInfo",
     "linkOpacity",
     "linkDirectionalParticleSpeed",
+    "linkDirectionalParticleResolution",
     "onNodeClick",
     "graphData",
     "cameraPosition",
@@ -34,6 +37,11 @@ vi.mock("3d-force-graph", () => {
     };
     const graph: Record<string, unknown> = {
       scene: () => scene,
+      renderer: () => ({
+        setPixelRatio: captured.pixelRatio,
+        forceContextLoss: vi.fn(),
+        domElement: document.createElement("canvas"),
+      }),
       _destructor: vi.fn(),
       refresh: captured.refresh,
     };
@@ -48,6 +56,10 @@ vi.mock("3d-force-graph", () => {
     };
     graph.linkWidth = (fn: (l: unknown) => number) => {
       captured.linkWidth.current = fn;
+      return graph;
+    };
+    graph.linkDirectionalParticleResolution = (value: number) => {
+      captured.particleResolution(value);
       return graph;
     };
     graph.nodeThreeObject = (fn: (n: unknown) => unknown) => {
@@ -83,6 +95,8 @@ afterEach(() => {
   captured.nodeLabel.current = null;
   captured.linkColor.current = null;
   captured.linkWidth.current = null;
+  captured.particleResolution.mockClear();
+  captured.pixelRatio.mockClear();
   captured.engineTick.current = null;
   captured.sceneAdds.length = 0;
 });
@@ -113,6 +127,20 @@ function buildMeshes() {
     meshes[n.id] = captured.nodeObj.current?.(n) as THREE.Mesh;
   }
   return meshes;
+}
+
+function simulateLibraryDeallocate(obj: THREE.Object3D): void {
+  const candidate = obj as THREE.Object3D & {
+    geometry?: { dispose?: () => void };
+    material?: { dispose?: () => void } | Array<{ dispose?: () => void }>;
+  };
+  candidate.geometry?.dispose?.();
+  if (Array.isArray(candidate.material)) {
+    candidate.material.forEach((material) => material.dispose?.());
+  } else {
+    candidate.material?.dispose?.();
+  }
+  obj.children.forEach(simulateLibraryDeallocate);
 }
 
 describe("Graph3DVisualization hover affordance", () => {
@@ -155,6 +183,87 @@ describe("Graph3DVisualization hover affordance", () => {
     viz.dispose();
   });
 
+  it("reuses one node geometry and scales meshes by node size", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    viz.loadData(data);
+    const meshes = buildMeshes();
+
+    expect(meshes.a.geometry).toBe(meshes.b.geometry);
+    expect(meshes.a.scale.x).toBeGreaterThan(1);
+    viz.dispose();
+  });
+
+  it("reuses resting materials for nodes in the same visual bucket", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    viz.loadData(data);
+    const meshes = buildMeshes();
+
+    expect(meshes.a.material).toBe(meshes.b.material);
+    expect(meshes.b.material).toBe(meshes.c.material);
+    viz.dispose();
+  });
+
+  it("clones only emphasized node materials on hover and restores shared resting materials", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    viz.loadData(data);
+    const meshes = buildMeshes();
+    const restingMaterial = meshes.a.material;
+
+    captured.hover.current?.({ id: "a" });
+
+    expect(meshes.a.material).not.toBe(restingMaterial);
+    expect(meshes.b.material).toBe(restingMaterial);
+    expect(meshes.c.material).not.toBe(restingMaterial);
+
+    captured.hover.current?.(null);
+
+    expect(meshes.a.material).toBe(restingMaterial);
+    expect(meshes.b.material).toBe(restingMaterial);
+    expect(meshes.c.material).toBe(restingMaterial);
+    viz.dispose();
+  });
+
+  it("protects shared node resources from the library's per-node deallocator", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    viz.loadData(data);
+    const meshes = buildMeshes();
+    const geometryDisposed = vi.fn();
+    const materialDisposed = vi.fn();
+
+    meshes.a.geometry.addEventListener("dispose", geometryDisposed);
+    (meshes.a.material as THREE.Material).addEventListener(
+      "dispose",
+      materialDisposed,
+    );
+
+    simulateLibraryDeallocate(meshes.a);
+
+    expect(geometryDisposed).not.toHaveBeenCalled();
+    expect(materialDisposed).not.toHaveBeenCalled();
+    expect(meshes.b.geometry).toBe(meshes.a.geometry);
+    expect(meshes.b.material).toBe(meshes.a.material);
+    viz.dispose();
+  });
+
+  it("disposes owned shared node resources when the visualization is disposed", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    viz.loadData(data);
+    const meshes = buildMeshes();
+    const geometryDisposed = vi.fn();
+    const materialDisposed = vi.fn();
+
+    meshes.a.geometry.addEventListener("dispose", geometryDisposed);
+    (meshes.a.material as THREE.Material).addEventListener(
+      "dispose",
+      materialDisposed,
+    );
+
+    viz.dispose();
+
+    expect(geometryDisposed).toHaveBeenCalledTimes(1);
+    expect(materialDisposed).toHaveBeenCalledTimes(1);
+  });
+
   it("styles nodes in place without rebuilding the graph on hover", () => {
     const viz = new Graph3DVisualization(document.createElement("div"));
     viz.loadData(data);
@@ -178,7 +287,7 @@ describe("Graph3DVisualization hover affordance", () => {
     viz.dispose();
   });
 
-  it("draws incident links in an owned overlay layer", () => {
+  it("draws incident links as one owned overlay segment batch", () => {
     const viz = new Graph3DVisualization(document.createElement("div"));
     const positionedData: GraphData = {
       nodes: data.nodes,
@@ -200,7 +309,33 @@ describe("Graph3DVisualization hover affordance", () => {
 
     expect(overlay).toBeDefined();
     expect(overlay?.children).toHaveLength(1);
-    expect(overlay?.children[0]).toBeInstanceOf(THREE.Line);
+    expect(overlay?.children[0]).toBeInstanceOf(THREE.LineSegments);
+    viz.dispose();
+  });
+
+  it("caps batched hover overlay segments for high-degree hubs", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    const hub = { id: "a", x: 0, y: 0, z: 0 };
+    const links = Array.from({ length: 240 }, (_, index) => ({
+      source: hub,
+      target: { id: `n-${index}`, x: index + 1, y: 1, z: 1 },
+      type: index === 0 ? "calls" : "contains",
+    })) as never[];
+
+    viz.loadData({
+      nodes: data.nodes,
+      links,
+    });
+    buildMeshes();
+    captured.hover.current?.({ id: "a" });
+    const overlay = captured.sceneAdds.find(
+      (obj) => obj instanceof THREE.Group,
+    ) as THREE.Group;
+    const segments = overlay.children[0] as THREE.LineSegments;
+    const positions = segments.geometry.getAttribute("position");
+
+    expect(overlay.children).toHaveLength(1);
+    expect(positions.count).toBe(320);
     viz.dispose();
   });
 
@@ -217,7 +352,7 @@ describe("Graph3DVisualization hover affordance", () => {
     const overlay = captured.sceneAdds.find(
       (obj) => obj instanceof THREE.Group,
     ) as THREE.Group;
-    const line = overlay.children[0] as THREE.Line;
+    const line = overlay.children[0] as THREE.LineSegments;
     const positions = line.geometry.getAttribute("position");
 
     source.x = 10;

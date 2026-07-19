@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  assignParticleBudget,
   buildHoverHighlightIndex,
   computeHoverHighlight,
   linkParticleCount,
   linkParticleSpeed,
   nodeEmphasis,
+  selectHoverOverlayLinks,
   type GraphData,
 } from "./graph3d";
 
@@ -26,6 +28,21 @@ describe("linkParticleCount", () => {
   it("prefers the calls rule over confidence", () => {
     expect(linkParticleCount({ type: "calls", confidence: "INFERRED" })).toBe(
       3,
+    );
+  });
+
+  it("uses the assigned render budget when present", () => {
+    const links = [
+      { type: "calls" },
+      { type: "references" },
+      { confidence: "EXTRACTED" },
+    ];
+
+    assignParticleBudget(links, 2);
+
+    expect(links.map(linkParticleCount).reduce((a, b) => a + b, 0)).toBe(2);
+    expect(linkParticleCount(links[0])).toBeGreaterThanOrEqual(
+      linkParticleCount(links[1]),
     );
   });
 });
@@ -108,6 +125,32 @@ describe("buildHoverHighlightIndex", () => {
   });
 });
 
+describe("selectHoverOverlayLinks", () => {
+  it("caps high-degree hover overlays and prioritizes semantically stronger links", () => {
+    const links = [
+      { source: "a", target: "low-1", type: "contains" },
+      { source: "a", target: "call-1", type: "calls" },
+      { source: "a", target: "ref-1", type: "references" },
+      { source: "a", target: "extracted-1", confidence: "EXTRACTED" },
+      { source: "a", target: "low-2", type: "contains" },
+    ];
+
+    const selected = selectHoverOverlayLinks(links, 3);
+
+    expect(selected).toHaveLength(3);
+    expect(selected).toEqual([links[1], links[3], links[2]]);
+  });
+
+  it("keeps all links when the neighborhood is under the cap", () => {
+    const links = [
+      { source: "a", target: "b", type: "contains" },
+      { source: "a", target: "c", type: "contains" },
+    ];
+
+    expect(selectHoverOverlayLinks(links, 3)).toEqual(links);
+  });
+});
+
 describe("nodeEmphasis", () => {
   const highlight = computeHoverHighlight(graph, "a"); // { a, b, c }, a hovered
 
@@ -134,6 +177,7 @@ describe("nodeEmphasis", () => {
     expect(nodeEmphasis("a", null, empty)).toEqual({
       opacity: 0.9,
       emissiveIntensity: 0,
+      variant: "normal",
     });
   });
 });
