@@ -120,9 +120,56 @@ describe("Graph3DVisualization node selection", () => {
         y: expect.any(Number),
         z: expect.any(Number),
       }),
-      node,
+      { x: 1, y: 2, z: 3 },
       1000,
     );
+    viz.dispose();
+  });
+
+  it("centers the clicked node while framing its hover-highlight neighborhood", () => {
+    const container = document.createElement("div");
+    const viz = new Graph3DVisualization(container);
+    const hub: GraphNode & { x: number; y: number; z: number } = {
+      id: "hub",
+      name: "hub",
+      type: "code",
+      x: 0,
+      y: 0,
+      z: 0,
+    };
+    const neighbor: GraphNode & { x: number; y: number; z: number } = {
+      id: "neighbor",
+      name: "neighbor",
+      type: "code",
+      x: 120,
+      y: 0,
+      z: 0,
+    };
+    const unrelated: GraphNode & { x: number; y: number; z: number } = {
+      id: "unrelated",
+      name: "unrelated",
+      type: "code",
+      x: 900,
+      y: 0,
+      z: 0,
+    };
+
+    viz.loadData({
+      nodes: [hub, neighbor, unrelated],
+      links: [{ source: "hub", target: "neighbor" }],
+    });
+    clickHandler.current?.(hub);
+
+    expect(lastGraph.current?.cameraPosition).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        z: expect.any(Number),
+      }),
+      { x: 0, y: 0, z: 0 },
+      1000,
+    );
+    expect(
+      lastGraph.current?.cameraPosition.mock.lastCall?.[0].z,
+    ).toBeGreaterThan(100);
     viz.dispose();
   });
 

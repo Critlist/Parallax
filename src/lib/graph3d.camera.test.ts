@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeCameraPosition } from "./graph3d";
+import { computeCameraPosition, computeSectionCameraFrame } from "./graph3d";
 
 const isFiniteVec = (v: { x: number; y: number; z: number }) =>
   Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
@@ -28,5 +28,25 @@ describe("computeCameraPosition", () => {
       100,
     );
     expect(isFiniteVec(pos)).toBe(true);
+  });
+});
+
+describe("computeSectionCameraFrame", () => {
+  it("keeps the clicked node centered while backing out to frame its neighborhood", () => {
+    const clicked = { id: "a", name: "a", type: "code", x: 0, y: 0, z: 0 };
+    const frame = computeSectionCameraFrame(
+      [
+        clicked,
+        { id: "b", name: "b", type: "code", x: 120, y: 0, z: 0 },
+        { id: "c", name: "c", type: "code", x: 0, y: 80, z: 0 },
+        { id: "d", name: "d", type: "code", x: 900, y: 900, z: 0 },
+      ],
+      new Set(["a", "b", "c"]),
+      clicked,
+    );
+
+    expect(frame.lookAt).toEqual({ x: 0, y: 0, z: 0 });
+    expect(frame.position.z).toBeGreaterThan(100);
+    expect(frame.position.x).toBe(0);
   });
 });
