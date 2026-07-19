@@ -1,53 +1,110 @@
 # Parallax
 
-A lightweight, local-first 3D viewer for code/knowledge graph exports —
-originally built to render [Graphify](https://github.com/Graphify-Labs/graphify)'s
-`graph.json` output, but works with any [networkx `node_link_data`](https://networkx.org/documentation/stable/reference/readwrite/generated/networkx.readwrite.json_graph.node_link_data.html)-shaped
-graph (`{nodes, links}` with `id`/`source`/`target`).
+Parallax is a small local Next.js app for viewing semantic code graphs in 3D.
+It was extracted from an older Omnigraph renderer and is currently focused on
+[Graphify](https://github.com/Graphify-Labs/graphify)-style `graph.json`
+exports.
 
-No backend, no account, nothing leaves the browser — point it at a `graph.json`
-and it renders. Runs as a static Next.js app.
+Graphify is the first supported input format. It is not part of this renderer:
+Parallax does not parse repositories, call LLMs, build communities, or produce
+graph exports. It adapts an existing graph export into a canonical graph model
+and renders that model with Three.js through `3d-force-graph`.
 
-## Why this exists
+## Current Status
 
-Graphify does the hard part — tree-sitter parsing, LLM-assisted relationship
-extraction, community detection — and exports a rich `graph.json`. Its own
-default viewer (`graph.html`) renders that with `vis-network`, a 2D-ish
-physics graph. This project is a focused alternative: take that same export
-and render it as a real WebGL 3D scene (`3d-force-graph` / Three.js), with
-node coloring by detected community and edge styling by extraction
-confidence.
+This is a shareable review build, not a finished product. The app can load the
+included sample or a local compatible JSON file in the browser. There is no
+backend and no upload path; selected files stay local to the browser session.
 
-It intentionally does none of the parsing/extraction work itself.
+Licensed under MIT. See `LICENSE`.
 
-## Getting started
+## Architecture
 
-```bash
-npm install
-npm run dev
+```text
+Graphify export -> adapter -> canonical graph model -> Graph3DVisualization -> Three.js / 3d-force-graph
 ```
 
-Open [http://localhost:3000](http://localhost:3000), then either:
+- `src/lib/graphifyAdapter.ts` validates and maps Graphify/networkx
+  `node_link_data` style exports into the renderer's `GraphData` shape.
+- `src/lib/graph3d.ts` owns the 3D renderer boundary: force graph setup,
+  Three.js node objects, camera movement, resize handling, and disposal.
+- `src/components/GraphViewer.tsx` owns the UI shell: loading the bundled
+  sample, reading a user-selected JSON file, showing stats, and showing the
+  selected node.
+- `src/app/page.tsx` dynamically loads the viewer because `3d-force-graph`
+  touches `window` at import time and cannot be server-rendered.
 
-- click **Load restoHack sample** to load the bundled fixture
-  (`public/sample/graph.json`, copied from `fixtures/graphify-restohack/`), or
-- click **Load graph.json…** and pick your own Graphify (or compatible) export
+## Requirements
 
-## How it works
+- Bun 1.3.x
+- Node.js 20.9 or newer, per the bundled Next.js 16 docs
+- A modern WebGL-capable browser
 
-- `src/lib/graph3d.ts` — thin wrapper around `3d-force-graph`/Three.js:
-  scene setup, node sizing/coloring, camera fly-to-node on click, resize
-  handling
-- `src/lib/graphifyAdapter.ts` — converts a Graphify `graph.json` export into
-  the `{nodes, links}` shape the viewer expects (`isGraphifyExport` guards
-  against unrecognized input; `fromGraphifyExport` does the mapping)
-- `src/components/GraphViewer.tsx` — the page: file loader, stats panel,
-  selected-node panel
+The repository uses `bun.lock` as the lockfile and declares
+`"packageManager": "bun@1.3.14"` in `package.json`.
 
-## Fixtures
+## Setup
 
-`fixtures/graphify-restohack/` holds a real Graphify export from the
-[restoHack](https://github.com/Critlist/restoHack) codebase for reference/testing — 984 nodes,
-2930 edges, 84 communities. `graph.json` is the data the viewer consumes;
-`graph.html`/`GRAPH_REPORT.md`/`manifest.json`/`cost.json` are Graphify's own
-output kept for comparison.
+```bash
+bun install
+bun run dev
+```
+
+Open http://localhost:3000.
+
+## Loading Graphs
+
+Use **Load restoHack sample** to load the bundled sample at
+`public/sample/graph.json`.
+
+Use **Load graph.json...** to choose your own local JSON export. The expected
+shape is Graphify's `graph.json` format, which is compatible with networkx
+`node_link_data`: a top-level object with `nodes` and `links` arrays, node
+`id` values, and link `source`/`target` values that refer to existing node ids.
+
+The checked-in source fixture lives in `fixtures/graphify-restohack/`. The
+runtime copy in `public/sample/graph.json` is what the sample button fetches.
+
+## Commands
+
+```bash
+bun install
+bun run format:check
+bun run lint
+bun run typecheck
+bun run test
+bun run build
+```
+
+Other useful commands:
+
+```bash
+bun run dev       # local development server
+bun run start     # serve a production build after bun run build
+bun run format    # rewrite files with Prettier
+bun run test:watch
+```
+
+## Project Layout
+
+```text
+src/app/                 Next.js App Router entry points
+src/components/          React UI for the graph viewer
+src/lib/graphifyAdapter.ts
+src/lib/graph3d.ts
+fixtures/graphify-restohack/
+public/sample/graph.json
+```
+
+## Limitations
+
+- Graphify is the first supported input format; other graph shapes need an
+  adapter before they should be considered supported.
+- Hyperedges are counted in stats but not rendered as first-class visual
+  objects.
+- Link confidence is carried through the canonical model but only the
+  confidence label currently affects link color.
+- Node selection is bridged with a small window-level `CustomEvent`; that is
+  acceptable for the current single-viewer UI but should be revisited if more
+  components need selection state.
+- There is no CI configuration yet.

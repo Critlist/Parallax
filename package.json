@@ -1,7 +1,9 @@
 {
   "name": "parallax",
   "version": "0.1.0",
+  "description": "Local 3D viewer for Graphify-style semantic code graph exports",
   "private": true,
+  "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

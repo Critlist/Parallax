@@ -1,6 +1,6 @@
 /**
- * 3D force-graph wrapper. Ported from omnigraph's Tauri app — this version has
- * no Tauri/IPC dependency, just DOM + 3d-force-graph + three.
+ * 3D force-graph wrapper extracted from the older Omnigraph renderer. This
+ * version has no app-shell dependency, just DOM + 3d-force-graph + three.
  *
  * `3d-force-graph` ships no usable types and augments node/link objects at
  * runtime (x/y/z, __degree, etc.), so `any` is used deliberately at the
@@ -41,7 +41,7 @@ const TYPE_COLORS: Record<string, string> = {
   document: "#7ED321",
   rationale: "#BB8FCE",
   image: "#F7DC6F",
-  // legacy omnigraph node types (kept for compatibility)
+  // Legacy Omnigraph node types kept for compatibility with older exports.
   file: "#4A90E2",
   module: "#7B68EE",
   class: "#50C878",
