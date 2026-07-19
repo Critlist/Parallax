@@ -75,6 +75,25 @@ function communityColor(group: number): string {
   return `hsl(${hue.toFixed(1)}, 65%, 58%)`;
 }
 
+/**
+ * Particle count communicates relationship strength: call edges (direction
+ * matters most) flow strongest, high-confidence (EXTRACTED) edges flow
+ * visibly, everything else keeps a subtle flow — never zero, so the graph
+ * always reads as a living system.
+ */
+export function linkParticleCount(link: {
+  type?: string;
+  confidence?: string;
+}): number {
+  if (link.type === "calls") return 3;
+  if (link.confidence === "EXTRACTED") return 2;
+  return 1;
+}
+
+export function linkParticleSpeed(link: { type?: string }): number {
+  return link.type === "calls" ? 0.01 : 0.005;
+}
+
 interface Vec3 {
   x: number;
   y: number;
