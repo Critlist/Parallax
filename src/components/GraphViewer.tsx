@@ -25,7 +25,26 @@ import { NodeTooltip } from "./graph-viewer/NodeTooltip";
 import { SettingsMenu } from "./graph-viewer/SettingsMenu";
 import styles from "./graph-viewer/GraphViewer.module.css";
 
-const SAMPLE_URL = "/sample/graph.json";
+const EXAMPLE_GRAPHS = [
+  {
+    id: "restohack",
+    label: "restoHack sample",
+    description: "Bundled Graphify export: 984 nodes, 2,930 edges.",
+    url: "/sample/graph.json",
+  },
+  {
+    id: "commander-js",
+    label: "Commander.js",
+    description: "JavaScript CLI library: 831 nodes, 1,166 edges.",
+    url: "/examples/commander-js/graph.json",
+  },
+  {
+    id: "click",
+    label: "Click",
+    description: "Python CLI library: 1,926 nodes, 3,966 edges.",
+    url: "/examples/click/graph.json",
+  },
+] as const;
 const MAX_SEARCH_RESULTS = 12;
 
 function endpointId(endpoint: unknown): string {
@@ -132,6 +151,9 @@ export default function GraphViewer() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debugVisible, setDebugVisible] = useState(false);
   const [hoverEnabled, setHoverEnabled] = useState(true);
+  const [selectedExampleId, setSelectedExampleId] = useState<string>(
+    EXAMPLE_GRAPHS[0].id,
+  );
   const [perf, setPerf] = useState<{
     snapshot: PerfSnapshot | null;
     fps: number;
@@ -331,16 +353,19 @@ export default function GraphViewer() {
     }
   }
 
-  async function loadSample() {
+  async function loadSelectedExample() {
+    const example =
+      EXAMPLE_GRAPHS.find((item) => item.id === selectedExampleId) ??
+      EXAMPLE_GRAPHS[0];
     setLoading(true);
     loadStartRef.current = performance.now();
     setLoadMs(null);
     try {
-      const res = await fetch(SAMPLE_URL);
+      const res = await fetch(example.url);
       const raw = await res.json();
       loadRaw(raw);
     } catch {
-      setError("Failed to load sample graph.");
+      setError("Failed to load example graph.");
       clearLoadTiming();
     } finally {
       setLoading(false);
@@ -445,7 +470,10 @@ export default function GraphViewer() {
           error={error}
           stats={stats}
           visibleStats={visibleStats}
-          onLoadSample={loadSample}
+          examples={EXAMPLE_GRAPHS}
+          selectedExampleId={selectedExampleId}
+          onSelectedExampleChange={setSelectedExampleId}
+          onLoadExample={loadSelectedExample}
           onFilePicked={onFilePicked}
         />
         <FilterPanel

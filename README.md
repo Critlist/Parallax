@@ -1,7 +1,8 @@
 # Parallax
 
 Parallax is a small local Next.js app for viewing semantic code graphs in 3D.
-It revives the 3D renderer from Omnigraph, an older Tauri/Rust desktop
+It revives the 3D renderer from
+[Omnigraph](https://github.com/Critlist/omnigraph), an older Tauri/Rust desktop
 code-visualization experiment, and points it at
 [Graphify](https://github.com/Graphify-Labs/graphify)-style `graph.json`
 exports.
@@ -10,6 +11,10 @@ Graphify is the first supported input format. It is not part of this renderer:
 Parallax does not parse repositories, call LLMs, build communities, or produce
 graph exports. It adapts an existing graph export into a canonical graph model
 and renders that model with Three.js through `3d-force-graph`.
+
+If Graphify gives you a `graph.json`, Parallax gives you a local way to inspect
+it in 3D: load the file in your browser, search for nodes, focus neighborhoods,
+filter by semantic metadata, and keep the data on your machine.
 
 ## Screenshots
 
@@ -35,8 +40,7 @@ Licensed under MIT. See `LICENSE`.
 Graphify export -> adapter -> canonical graph model -> Graph3DVisualization -> Three.js / 3d-force-graph
 ```
 
-- [Omnigraph](https://github.com/Critlist/omnigraph) supplied the original 3D
-  renderer idea and interaction model.
+- Omnigraph supplied the original 3D renderer idea and interaction model.
 - `src/lib/graphifyAdapter.ts` validates and maps Graphify/networkx
   `node_link_data` style exports into the renderer's `GraphData` shape.
 - `src/lib/graph3d.ts` owns the 3D renderer boundary: force graph setup,
@@ -67,16 +71,64 @@ Open http://localhost:3000.
 
 ## Loading Graphs
 
-Use **Load restoHack sample** to load the bundled sample at
-`public/sample/graph.json`.
+Use **Example graph** and **Load example** to load a bundled sample.
+
+| Example          | Source                                                  | License      | Nodes | Edges | Runtime path                              |
+| ---------------- | ------------------------------------------------------- | ------------ | ----: | ----: | ----------------------------------------- |
+| restoHack sample | Local fixture                                           | MIT          |   984 | 2,930 | `public/sample/graph.json`                |
+| Commander.js     | [`tj/commander.js`](https://github.com/tj/commander.js) | MIT          |   831 | 1,166 | `public/examples/commander-js/graph.json` |
+| Click            | [`pallets/click`](https://github.com/pallets/click)     | BSD-3-Clause | 1,926 | 3,966 | `public/examples/click/graph.json`        |
 
 Use **Load graph.json...** to choose your own local JSON export. The expected
 shape is Graphify's `graph.json` format, which is compatible with networkx
 `node_link_data`: a top-level object with `nodes` and `links` arrays, node
 `id` values, and link `source`/`target` values that refer to existing node ids.
 
-The checked-in source fixture lives in `fixtures/graphify-restohack/`. The
-runtime copy in `public/sample/graph.json` is what the sample button fetches.
+Minimal compatible shape:
+
+```json
+{
+  "nodes": [
+    {
+      "id": "src/app.ts",
+      "name": "app.ts",
+      "type": "code",
+      "path": "src/app.ts"
+    },
+    {
+      "id": "src/routes.ts",
+      "name": "routes.ts",
+      "type": "code",
+      "path": "src/routes.ts"
+    }
+  ],
+  "links": [
+    {
+      "source": "src/app.ts",
+      "target": "src/routes.ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    }
+  ]
+}
+```
+
+Checked-in source fixtures live in `fixtures/graphify-restohack/`,
+`fixtures/graphify-commander-js/`, and `fixtures/graphify-click/`. Runtime
+copies under `public/` are what the examples dropdown fetches.
+
+Larger generated Graphify exports have been validated locally for performance
+testing, including Vite, FastAPI, Prometheus, and rust-analyzer scale graphs.
+Those exports are not bundled because the generated JSON files are large; use
+**Load graph.json...** for local test exports.
+
+## Large Graphs
+
+Parallax automatically switches very large graphs into an adaptive stress render
+mode. In that mode it keeps the full graph loaded, but reduces ambient particles,
+caps visible edges by semantic priority, lowers link opacity, and shortens force
+simulation so large Graphify exports remain navigable. The debug overlay shows
+the active render mode and current renderer counters.
 
 ## Commands
 
@@ -106,7 +158,10 @@ src/components/          React UI for the graph viewer
 src/lib/graphifyAdapter.ts
 src/lib/graph3d.ts
 fixtures/graphify-restohack/
+fixtures/graphify-commander-js/
+fixtures/graphify-click/
 public/sample/graph.json
+public/examples/
 ```
 
 ## Limitations

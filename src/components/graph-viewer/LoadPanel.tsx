@@ -7,21 +7,46 @@ export function LoadPanel({
   error,
   stats,
   visibleStats,
-  onLoadSample,
+  examples,
+  selectedExampleId,
+  onSelectedExampleChange,
+  onLoadExample,
   onFilePicked,
 }: LoadPanelProps) {
+  const selectedExample = examples.find(
+    (example) => example.id === selectedExampleId,
+  );
+
   return (
     <section className={styles.panel} aria-label="Graph loader">
       <strong className={styles.title}>Parallax</strong>
       <div className={styles.muted}>
         Renders Graphify (or any node_link_data) exports in 3D.
       </div>
+      <label className={styles.fieldLabel}>
+        Example graph
+        <select
+          className={styles.select}
+          value={selectedExampleId}
+          onChange={(e) => onSelectedExampleChange(e.target.value)}
+          disabled={loading}
+        >
+          {examples.map((example) => (
+            <option key={example.id} value={example.id}>
+              {example.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selectedExample && (
+        <div className={styles.detail}>{selectedExample.description}</div>
+      )}
       <button
         className={styles.button}
-        onClick={onLoadSample}
+        onClick={onLoadExample}
         disabled={loading}
       >
-        {loading ? "Loading..." : "Load restoHack sample"}
+        {loading ? "Loading..." : "Load example"}
       </button>
       <label className={styles.fileButton}>
         Load graph.json...

@@ -84,6 +84,54 @@ function fileInput(): HTMLInputElement {
 }
 
 describe("GraphViewer file loading", () => {
+  it("loads bundled examples from a data-driven examples control", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => ({
+        nodes: [{ id: "a", label: "main()", file_type: "code", community: 0 }],
+        links: [],
+      }),
+    } as Response);
+
+    render(<GraphViewer />);
+
+    expect(
+      screen.queryByRole("button", { name: /load restohack sample/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/example graph/i)).toHaveValue("restohack");
+    expect(
+      screen.getByRole("option", { name: /restohack/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /click/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /commander\.js/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /load example/i }));
+
+    await screen.findByText(/1 nodes .* 0 edges/i);
+    expect(fetch).toHaveBeenCalledWith("/sample/graph.json");
+
+    fireEvent.change(screen.getByLabelText(/example graph/i), {
+      target: { value: "click" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /load example/i }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenLastCalledWith("/examples/click/graph.json"),
+    );
+
+    fireEvent.change(screen.getByLabelText(/example graph/i), {
+      target: { value: "commander-js" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /load example/i }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenLastCalledWith(
+        "/examples/commander-js/graph.json",
+      ),
+    );
+  });
+
   it("toggles the debug overlay with the backtick key", () => {
     render(<GraphViewer />);
 

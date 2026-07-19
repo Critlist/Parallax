@@ -11,7 +11,14 @@ export interface LoadPanelProps {
   error: string | null;
   stats: GraphifyStats | null;
   visibleStats: VisibleStats | null;
-  onLoadSample: () => void;
+  examples: ReadonlyArray<{
+    id: string;
+    label: string;
+    description: string;
+  }>;
+  selectedExampleId: string;
+  onSelectedExampleChange: (id: string) => void;
+  onLoadExample: () => void;
   onFilePicked: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 

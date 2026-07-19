@@ -1,0 +1,59 @@
+{
+  "dataset": "click",
+  "generatedAt": "2026-07-19T18:20:53.352Z",
+  "graphifyVersion": "0.9.19",
+  "validation": {
+    "jsonSyntax": true,
+    "hasTopLevelNodesLinks": true,
+    "duplicateNodeIdCount": 0,
+    "duplicateNodeIds": [],
+    "danglingLinkCount": 0,
+    "danglingLinks": []
+  },
+  "counts": {
+    "nodes": 1926,
+    "links": 3966,
+    "communities": 125,
+    "hyperedges": 0,
+    "fileSizeBytes": 2020735
+  },
+  "breakdowns": {
+    "nodeTypes": {
+      "code": 1439,
+      "rationale": 487
+    },
+    "relationTypes": {
+      "calls": 737,
+      "contains": 838,
+      "depends_on": 10,
+      "imports": 179,
+      "imports_from": 68,
+      "indirect_call": 286,
+      "inherits": 36,
+      "method": 383,
+      "rationale_for": 495,
+      "re_exports": 8,
+      "references": 566,
+      "uses": 360
+    },
+    "confidence": {
+      "EXTRACTED": 3112,
+      "INFERRED": 854
+    },
+    "sourceCategories": {
+      "EXTRACTED": 3112,
+      "INFERRED": 854
+    }
+  },
+  "parallaxValidation": {
+    "loadCheck": "Graphify/networkx shape validated locally; load manually in Parallax with Load graph.json... to compare visual quality.",
+    "loadMs": null,
+    "settleMs": null,
+    "fpsAfterSettling": null,
+    "drawCalls": null,
+    "geometries": null,
+    "materials": null,
+    "particles": null,
+    "visualIssues": []
+  }
+}
