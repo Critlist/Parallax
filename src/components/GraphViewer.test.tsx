@@ -13,6 +13,7 @@ const { graphInstances } = vi.hoisted(() => ({
     loadData: ReturnType<typeof vi.fn>;
     resetView: ReturnType<typeof vi.fn>;
     focusNode: ReturnType<typeof vi.fn>;
+    fitGraph: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     selectNode: (node: unknown) => void;
   }>,
@@ -29,6 +30,7 @@ vi.mock("@/lib/graph3d", async (importOriginal) => {
       loadData = vi.fn();
       resetView = vi.fn();
       focusNode = vi.fn();
+      fitGraph = vi.fn();
       dispose = vi.fn();
       selectNode: (node: unknown) => void;
 
@@ -178,6 +180,7 @@ describe("GraphViewer file loading", () => {
     });
 
     await screen.findByText(/3 nodes .* 2 edges/i);
+    fireEvent.click(screen.getByRole("button", { name: /types/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: /concept/i }));
 
     await waitFor(() =>
@@ -191,6 +194,258 @@ describe("GraphViewer file loading", () => {
         expect.objectContaining({ id: "c" }),
       ],
       links: [],
+    });
+  });
+
+  it("groups filters into chevron dropdowns", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [
+        { id: "a", label: "main()", file_type: "code", community: 0 },
+        { id: "b", label: "Concept", file_type: "concept", community: 1 },
+      ],
+      links: [
+        {
+          source: "a",
+          target: "b",
+          relation: "references",
+          confidence: "INFERRED",
+        },
+      ],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/2 nodes .* 1 edges/i);
+
+    for (const name of ["Types", "Communities", "Relations", "Confidence"]) {
+      expect(
+        screen.getByRole("button", { name: new RegExp(name, "i") }),
+      ).toHaveAttribute("aria-expanded", "false");
+    }
+    expect(
+      screen.queryByRole("checkbox", { name: /code/i }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /types/i }));
+
+    expect(screen.getByRole("button", { name: /types/i })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByRole("checkbox", { name: /code/i })).toBeInTheDocument();
+  });
+
+  it("filters visible graph data by community and clears a hidden selected node", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [
+        { id: "a", label: "main()", file_type: "code", community: 0 },
+        { id: "b", label: "Concept", file_type: "concept", community: 1 },
+      ],
+      links: [{ source: "a", target: "b", relation: "references" }],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/2 nodes .* 1 edges/i);
+    fireEvent.change(screen.getByRole("searchbox", { name: /search/i }), {
+      target: { value: "concept" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /concept/i }));
+    expect(
+      screen.getByRole("region", { name: /selected node/i }),
+    ).toHaveTextContent("Concept");
+
+    fireEvent.click(screen.getByRole("button", { name: /communities/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /community 1/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", { name: /selected node/i }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(/visible: 1 nodes .* 0 edges/i),
+    ).toBeInTheDocument();
+  });
+
+  it("filters visible links by relation and confidence without dropping nodes", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [
+        { id: "a", label: "main()", file_type: "code", community: 0 },
+        { id: "b", label: "Concept", file_type: "concept", community: 1 },
+        { id: "c", label: "Readme", file_type: "document", community: 1 },
+      ],
+      links: [
+        {
+          source: "a",
+          target: "b",
+          relation: "references",
+          confidence: "EXTRACTED",
+        },
+        { source: "b", target: "c", relation: "calls", confidence: "INFERRED" },
+      ],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/3 nodes .* 2 edges/i);
+    fireEvent.click(screen.getByRole("button", { name: /relations/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /calls/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/visible: 3 nodes .* 1 edges/i),
+      ).toBeInTheDocument(),
+    );
+    expect(graphInstances[0].loadData).toHaveBeenLastCalledWith({
+      nodes: [
+        expect.objectContaining({ id: "a" }),
+        expect.objectContaining({ id: "b" }),
+        expect.objectContaining({ id: "c" }),
+      ],
+      links: [expect.objectContaining({ type: "references" })],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^clear$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confidence/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /inferred/i }));
+
+    await waitFor(() =>
+      expect(graphInstances[0].loadData).toHaveBeenLastCalledWith({
+        nodes: [
+          expect.objectContaining({ id: "a" }),
+          expect.objectContaining({ id: "b" }),
+          expect.objectContaining({ id: "c" }),
+        ],
+        links: [expect.objectContaining({ confidence: "EXTRACTED" })],
+      }),
+    );
+  });
+
+  it("fits the loaded graph from the toolbar", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [{ id: "a", label: "main()", file_type: "code", community: 0 }],
+      links: [],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/1 nodes .* 0 edges/i);
+    fireEvent.click(screen.getByRole("button", { name: /^fit$/i }));
+
+    expect(graphInstances[0].fitGraph).toHaveBeenCalledOnce();
+  });
+
+  it("shows incoming, outgoing, and connected-node summaries for the selected node", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [
+        { id: "a", label: "caller()", file_type: "code", community: 0 },
+        { id: "b", label: "target()", file_type: "code", community: 0 },
+        { id: "c", label: "Concept", file_type: "concept", community: 1 },
+      ],
+      links: [
+        { source: "a", target: "b", relation: "calls" },
+        { source: "b", target: "c", relation: "references" },
+      ],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/3 nodes .* 2 edges/i);
+    fireEvent.change(screen.getByRole("searchbox", { name: /search/i }), {
+      target: { value: "target" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /target\(\)/i }));
+
+    const inspector = screen.getByRole("region", { name: /selected node/i });
+    expect(inspector).toHaveTextContent("incoming: 1");
+    expect(inspector).toHaveTextContent("outgoing: 1");
+    expect(inspector).toHaveTextContent("caller() -> calls");
+    expect(inspector).toHaveTextContent("references -> Concept");
+  });
+
+  it("shows only the selected node neighborhood and clears that neighborhood view", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [
+        { id: "a", label: "caller()", file_type: "code", community: 0 },
+        { id: "b", label: "target()", file_type: "code", community: 0 },
+        { id: "c", label: "Concept", file_type: "concept", community: 1 },
+        { id: "d", label: "Unrelated", file_type: "document", community: 2 },
+      ],
+      links: [
+        { source: "a", target: "b", relation: "calls" },
+        { source: "b", target: "c", relation: "references" },
+      ],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/4 nodes .* 2 edges/i);
+    fireEvent.change(screen.getByRole("searchbox", { name: /search/i }), {
+      target: { value: "target" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /target\(\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show neighbors/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/visible: 3 nodes .* 2 edges/i),
+      ).toBeInTheDocument(),
+    );
+    expect(graphInstances[0].loadData).toHaveBeenLastCalledWith({
+      nodes: [
+        expect.objectContaining({ id: "a" }),
+        expect.objectContaining({ id: "b" }),
+        expect.objectContaining({ id: "c" }),
+      ],
+      links: [
+        expect.objectContaining({ type: "calls" }),
+        expect.objectContaining({ type: "references" }),
+      ],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /clear neighbors/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/visible: 3 nodes .* 2 edges/i),
+      ).not.toBeInTheDocument(),
+    );
+    expect(graphInstances[0].loadData).toHaveBeenLastCalledWith({
+      nodes: [
+        expect.objectContaining({ id: "a" }),
+        expect.objectContaining({ id: "b" }),
+        expect.objectContaining({ id: "c" }),
+        expect.objectContaining({ id: "d" }),
+      ],
+      links: [
+        expect.objectContaining({ type: "calls" }),
+        expect.objectContaining({ type: "references" }),
+      ],
     });
   });
 });

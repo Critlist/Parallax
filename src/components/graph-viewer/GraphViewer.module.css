@@ -17,8 +17,10 @@
   left: 16px;
   display: flex;
   width: min(280px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
   flex-direction: column;
   gap: 10px;
+  overflow: auto;
 }
 
 .panel,
@@ -50,6 +52,7 @@
 .detail,
 .path,
 .relations,
+.neighbors,
 .resultMeta,
 .count {
   font-size: 12px;
@@ -115,6 +118,39 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filterGroupTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  background: transparent;
+  color: rgba(238, 238, 238, 0.62);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  padding: 0;
+  text-transform: uppercase;
+}
+
+.chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.filterGroupTitle[aria-expanded="true"] .chevron {
+  transform: rotate(45deg);
 }
 
 .checkRow {
@@ -240,6 +276,28 @@
 
 .relations {
   line-height: 1.45;
+}
+
+.neighbors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.35;
+}
+
+.sectionTitle {
+  color: rgba(238, 238, 238, 0.62);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.inspectorActions {
+  display: flex;
+  gap: 8px;
+}
+
+.inspectorActions .secondaryButton {
+  flex: 1;
 }
 
 .srOnly {

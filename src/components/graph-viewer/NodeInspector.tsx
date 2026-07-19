@@ -10,30 +10,68 @@ function endpointId(endpoint: unknown): string {
   return String(endpoint);
 }
 
-function relationCounts(node: GraphNode, links: GraphData["links"]) {
+interface NeighborSummary {
+  id: string;
+  label: string;
+  type: string;
+  relation: string;
+  direction: "incoming" | "outgoing";
+}
+
+function summarizeConnections(node: GraphNode, graphData: GraphData | null) {
+  const nodesById = new Map((graphData?.nodes ?? []).map((n) => [n.id, n]));
   const counts = new Map<string, number>();
+  const neighbors: NeighborSummary[] = [];
   let degree = 0;
-  for (const link of links) {
-    if (
-      endpointId(link.source) !== node.id &&
-      endpointId(link.target) !== node.id
-    ) {
+  let incoming = 0;
+  let outgoing = 0;
+
+  for (const link of graphData?.links ?? []) {
+    const source = endpointId(link.source);
+    const target = endpointId(link.target);
+    const isIncoming = target === node.id;
+    const isOutgoing = source === node.id;
+    if (!isIncoming && !isOutgoing) {
       continue;
     }
+
     degree += 1;
+    if (isIncoming) incoming += 1;
+    if (isOutgoing) outgoing += 1;
+
     const type = link.type ?? "related";
     counts.set(type, (counts.get(type) ?? 0) + 1);
+    const neighborId = isIncoming ? source : target;
+    const neighbor = nodesById.get(neighborId);
+    neighbors.push({
+      id: neighborId,
+      label: neighbor?.name ?? neighborId,
+      type: neighbor?.type ?? "unknown",
+      relation: type,
+      direction: isIncoming ? "incoming" : "outgoing",
+    });
   }
-  return { degree, counts: [...counts.entries()] };
+
+  return {
+    degree,
+    incoming,
+    outgoing,
+    counts: [...counts.entries()],
+    neighbors,
+  };
 }
 
 export function NodeInspector({
   node,
   graphData,
+  isShowingNeighbors,
   onFocus,
+  onShowNeighbors,
+  onClearNeighbors,
   onClear,
 }: NodeInspectorProps) {
-  const { degree, counts } = relationCounts(node, graphData?.links ?? []);
+  const { degree, incoming, outgoing, counts, neighbors } =
+    summarizeConnections(node, graphData);
 
   return (
     <section className={styles.inspector} aria-label="Selected node">
@@ -49,6 +87,8 @@ export function NodeInspector({
         <div className={styles.detail}>community: {node.group}</div>
       ) : null}
       <div className={styles.detail}>degree: {degree}</div>
+      <div className={styles.detail}>incoming: {incoming}</div>
+      <div className={styles.detail}>outgoing: {outgoing}</div>
       {node.filePath ? (
         <div className={styles.path}>{String(node.filePath)}</div>
       ) : null}
@@ -64,9 +104,44 @@ export function NodeInspector({
           ))}
         </div>
       )}
-      <button className={styles.secondaryButton} onClick={onFocus}>
-        Focus node
-      </button>
+      {neighbors.length > 0 && (
+        <div className={styles.neighbors}>
+          <div className={styles.sectionTitle}>Connected nodes</div>
+          {neighbors.slice(0, 8).map((neighbor) => (
+            <div
+              key={`${neighbor.direction}-${neighbor.id}-${neighbor.relation}`}
+            >
+              {neighbor.direction === "incoming"
+                ? `${neighbor.label} -> ${neighbor.relation}`
+                : `${neighbor.relation} -> ${neighbor.label}`}
+              <span className={styles.resultMeta}> ({neighbor.type})</span>
+            </div>
+          ))}
+          {neighbors.length > 8 && (
+            <div className={styles.resultMeta}>
+              {neighbors.length - 8} more connected nodes
+            </div>
+          )}
+        </div>
+      )}
+      <div className={styles.inspectorActions}>
+        <button className={styles.secondaryButton} onClick={onFocus}>
+          Focus node
+        </button>
+        {isShowingNeighbors ? (
+          <button className={styles.secondaryButton} onClick={onClearNeighbors}>
+            Clear neighbors
+          </button>
+        ) : (
+          <button
+            className={styles.secondaryButton}
+            onClick={onShowNeighbors}
+            disabled={degree === 0}
+          >
+            Show neighbors
+          </button>
+        )}
+      </div>
     </section>
   );
 }

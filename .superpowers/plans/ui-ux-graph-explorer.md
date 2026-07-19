@@ -84,8 +84,8 @@ help people orient, search, filter, and inspect without burying the scene.
    - Clicking a search result opens the inspector and moves the camera.
    - No global event bus is reintroduced.
 
-3. **Add filter controls with live counts.** Partially done.
-   - Start with checkboxes/segmented controls for node `type` and community.
+3. **Add filter controls with live counts.** Done for the first useful slice.
+   - Add checkboxes for node `type` and community.
    - Add relation/confidence filters for links once node filtering is stable.
    - Apply filters by deriving visible `GraphData` in React and calling
      `viz.loadData(visibleData)`.
@@ -98,11 +98,10 @@ help people orient, search, filter, and inspect without burying the scene.
      clears it when it is filtered out.
 
    Remaining:
-   - Community filters.
-   - Relation/confidence filters.
-   - More compact controls once filter count grows.
+   - Filter search or virtualization if any filter group grows beyond a small
+     checklist.
 
-4. **Improve details on demand.** Partially done.
+4. **Improve details on demand.** Done for the first useful slice.
    - Expand the selected-node inspector to show label, id, type, community,
      file path, source location, degree, and connected relation counts.
    - Add neighbor actions: "show neighbors", "focus", and "clear selection".
@@ -115,10 +114,9 @@ help people orient, search, filter, and inspect without burying the scene.
    - Long paths wrap cleanly and do not resize the canvas.
 
    Remaining:
-   - "Show neighbors" action.
-   - Better connected-node summaries.
+   - Neighborhood depth beyond one hop if larger graph workflows need it.
 
-5. **Add visual encoding legend and view controls.** Partially done.
+5. **Add visual encoding legend and view controls.** Done for the first useful slice.
    - Add a collapsible legend explaining node color, node size, link color, and
      directional particles.
    - Add reset view, fit graph, and focus selected controls.
@@ -130,7 +128,6 @@ help people orient, search, filter, and inspect without burying the scene.
    - Reset/focus controls work after loading a sample and after filtering.
 
    Remaining:
-   - Fit graph control.
    - Better legend values once relation/confidence filters and encodings grow.
 
 6. **Only then consider larger interaction features.**

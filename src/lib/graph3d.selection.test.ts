@@ -8,6 +8,7 @@ const { clickHandler, lastGraph } = vi.hoisted(() => ({
     current: null as {
       cameraPosition: ReturnType<typeof vi.fn>;
       graphData: ReturnType<typeof vi.fn>;
+      zoomToFit: ReturnType<typeof vi.fn>;
     } | null,
   },
 }));
@@ -32,11 +33,13 @@ vi.mock("3d-force-graph", () => {
       scene: () => ({ add: () => {} }),
       cameraPosition: vi.fn(),
       graphData: vi.fn(),
+      zoomToFit: vi.fn(),
       _destructor: vi.fn(),
     };
     lastGraph.current = graph as {
       cameraPosition: ReturnType<typeof vi.fn>;
       graphData: ReturnType<typeof vi.fn>;
+      zoomToFit: ReturnType<typeof vi.fn>;
     };
     for (const b of builders) graph[b] = () => graph;
     graph.onNodeClick = (handler: (node: unknown) => void) => {
@@ -106,6 +109,16 @@ describe("Graph3DVisualization node selection", () => {
       node,
       1000,
     );
+    viz.dispose();
+  });
+
+  it("fits the current graph through the public renderer API", () => {
+    const container = document.createElement("div");
+    const viz = new Graph3DVisualization(container);
+
+    viz.fitGraph();
+
+    expect(lastGraph.current?.zoomToFit).toHaveBeenCalledWith(1000, 80);
     viz.dispose();
   });
 });

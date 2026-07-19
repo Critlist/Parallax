@@ -9,6 +9,7 @@ export function GraphToolbar({
   onSearchTermChange,
   onSelectSearchResult,
   onResetView,
+  onFitGraph,
   onFocusSelected,
 }: GraphToolbarProps) {
   if (!hasGraph) return null;
@@ -28,6 +29,9 @@ export function GraphToolbar({
       <div className={styles.toolbarActions}>
         <button className={styles.secondaryButton} onClick={onResetView}>
           Reset
+        </button>
+        <button className={styles.secondaryButton} onClick={onFitGraph}>
+          Fit
         </button>
         <button
           className={styles.secondaryButton}

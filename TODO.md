@@ -6,12 +6,14 @@ still open.
 
 ## Unresolved
 
-1. **UI/UX direction and styling approach** - the UI currently uses inline
-   `React.CSSProperties` objects, with no CSS framework or component library.
-   Before adding more controls, pick a small UI structure that supports graph
-   exploration without burying the canvas. Detailed research notes and staged
-   implementation plan live in
-   `.superpowers/plans/ui-ux-graph-explorer.md`.
+1. **Next graph-explorer UI slice** - the UI now has extracted components,
+   CSS-module styling, node search/focus, type/community filters,
+   relation/confidence filters, visible counts, a legend, and reset/fit/focus
+   controls. The selected-node inspector now includes incoming/outgoing counts,
+   connected-node summaries, and a one-hop neighborhood view. Remaining UI/UX
+   work should stay scoped to larger graph workflows in
+   `.superpowers/plans/ui-ux-graph-explorer.md`, especially scalable filter
+   search if a graph has many communities or relation types.
 
 ## Resolved In Current Tree
 

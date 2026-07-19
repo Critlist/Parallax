@@ -237,6 +237,10 @@ export class Graph3DVisualization {
     );
   }
 
+  public fitGraph(): void {
+    this.graph.zoomToFit(1000, 80);
+  }
+
   public dispose(): void {
     if (this.resizeHandler) {
       window.removeEventListener("resize", this.resizeHandler);

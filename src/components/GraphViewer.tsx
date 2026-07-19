@@ -29,20 +29,54 @@ function endpointId(endpoint: unknown): string {
 
 function deriveVisibleGraph(
   graphData: GraphData | null,
-  disabledTypes: Set<string>,
+  filters: {
+    disabledTypes: Set<string>;
+    disabledCommunities: Set<number>;
+    disabledRelations: Set<string>;
+    disabledConfidences: Set<string>;
+    neighborhoodRootId: string | null;
+  },
 ): GraphData | null {
   if (!graphData) return null;
-  const nodes = graphData.nodes
-    .filter((node) => !disabledTypes.has(node.type))
+  const filteredNodes = graphData.nodes
+    .filter(
+      (node) =>
+        !filters.disabledTypes.has(node.type) &&
+        !(
+          typeof node.group === "number" &&
+          filters.disabledCommunities.has(node.group)
+        ),
+    )
     .map((node) => ({ ...node }));
-  const visibleIds = new Set(nodes.map((node) => node.id));
-  const links = graphData.links
+  const filteredIds = new Set(filteredNodes.map((node) => node.id));
+  const filteredLinks = graphData.links
     .filter(
       (link) =>
-        visibleIds.has(endpointId(link.source)) &&
-        visibleIds.has(endpointId(link.target)),
+        filteredIds.has(endpointId(link.source)) &&
+        filteredIds.has(endpointId(link.target)) &&
+        !filters.disabledRelations.has(link.type ?? "related") &&
+        !filters.disabledConfidences.has(String(link.confidence ?? "UNKNOWN")),
     )
     .map((link) => ({ ...link }));
+
+  if (!filters.neighborhoodRootId) {
+    return { nodes: filteredNodes, links: filteredLinks };
+  }
+
+  const neighborhoodIds = new Set([filters.neighborhoodRootId]);
+  const neighborhoodLinks = filteredLinks.filter((link) => {
+    const source = endpointId(link.source);
+    const target = endpointId(link.target);
+    const touchesRoot =
+      source === filters.neighborhoodRootId ||
+      target === filters.neighborhoodRootId;
+    if (!touchesRoot) return false;
+    neighborhoodIds.add(source);
+    neighborhoodIds.add(target);
+    return true;
+  });
+  const nodes = filteredNodes.filter((node) => neighborhoodIds.has(node.id));
+  const links = neighborhoodLinks.map((link) => ({ ...link }));
   return { nodes, links };
 }
 
@@ -63,11 +97,37 @@ export default function GraphViewer() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [disabledTypes, setDisabledTypes] = useState<Set<string>>(new Set());
+  const [disabledCommunities, setDisabledCommunities] = useState<Set<number>>(
+    new Set(),
+  );
+  const [disabledRelations, setDisabledRelations] = useState<Set<string>>(
+    new Set(),
+  );
+  const [disabledConfidences, setDisabledConfidences] = useState<Set<string>>(
+    new Set(),
+  );
+  const [neighborhoodRootId, setNeighborhoodRootId] = useState<string | null>(
+    null,
+  );
   const [searchTerm, setSearchTerm] = useState("");
 
   const visibleGraph = useMemo(
-    () => deriveVisibleGraph(sourceGraph, disabledTypes),
-    [sourceGraph, disabledTypes],
+    () =>
+      deriveVisibleGraph(sourceGraph, {
+        disabledTypes,
+        disabledCommunities,
+        disabledRelations,
+        disabledConfidences,
+        neighborhoodRootId,
+      }),
+    [
+      sourceGraph,
+      disabledTypes,
+      disabledCommunities,
+      disabledRelations,
+      disabledConfidences,
+      neighborhoodRootId,
+    ],
   );
 
   const visibleStats = visibleGraph
@@ -86,6 +146,37 @@ export default function GraphViewer() {
         : [],
     [stats],
   );
+
+  const communityCounts = useMemo<Array<[number, number]>>(() => {
+    if (!sourceGraph) return [];
+    const counts = new Map<number, number>();
+    for (const node of sourceGraph.nodes) {
+      if (typeof node.group === "number") {
+        counts.set(node.group, (counts.get(node.group) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort(([a], [b]) => a - b);
+  }, [sourceGraph]);
+
+  const relationCounts = useMemo<Array<[string, number]>>(() => {
+    if (!sourceGraph) return [];
+    const counts = new Map<string, number>();
+    for (const link of sourceGraph.links) {
+      const type = link.type ?? "related";
+      counts.set(type, (counts.get(type) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [sourceGraph]);
+
+  const confidenceCounts = useMemo<Array<[string, number]>>(() => {
+    if (!sourceGraph) return [];
+    const counts = new Map<string, number>();
+    for (const link of sourceGraph.links) {
+      const confidence = String(link.confidence ?? "UNKNOWN");
+      counts.set(confidence, (counts.get(confidence) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [sourceGraph]);
 
   const searchResults = useMemo(() => {
     const term = searchTerm.trim();
@@ -128,6 +219,10 @@ export default function GraphViewer() {
     setSelected(null);
     setSearchTerm("");
     setDisabledTypes(new Set());
+    setDisabledCommunities(new Set());
+    setDisabledRelations(new Set());
+    setDisabledConfidences(new Set());
+    setNeighborhoodRootId(null);
     setSourceGraph(data);
   }
 
@@ -175,12 +270,56 @@ export default function GraphViewer() {
     }
     if (selected && next.has(selected.type)) {
       setSelected(null);
+      setNeighborhoodRootId(null);
     }
     setDisabledTypes(next);
   }
 
+  function toggleCommunity(community: number) {
+    const next = new Set(disabledCommunities);
+    if (next.has(community)) {
+      next.delete(community);
+    } else {
+      next.add(community);
+    }
+    if (selected?.group === community && next.has(community)) {
+      setSelected(null);
+      setNeighborhoodRootId(null);
+    }
+    setDisabledCommunities(next);
+  }
+
+  function toggleRelation(relation: string) {
+    const next = new Set(disabledRelations);
+    if (next.has(relation)) {
+      next.delete(relation);
+    } else {
+      next.add(relation);
+    }
+    setDisabledRelations(next);
+  }
+
+  function toggleConfidence(confidence: string) {
+    const next = new Set(disabledConfidences);
+    if (next.has(confidence)) {
+      next.delete(confidence);
+    } else {
+      next.add(confidence);
+    }
+    setDisabledConfidences(next);
+  }
+
+  function clearFilters() {
+    setDisabledTypes(new Set());
+    setDisabledCommunities(new Set());
+    setDisabledRelations(new Set());
+    setDisabledConfidences(new Set());
+    setNeighborhoodRootId(null);
+  }
+
   function focusNode(node: GraphNode) {
     setSelected(node);
+    setNeighborhoodRootId(null);
     vizRef.current?.focusNode(node.id);
   }
 
@@ -200,8 +339,17 @@ export default function GraphViewer() {
         <FilterPanel
           typeCounts={typeCounts}
           disabledTypes={disabledTypes}
+          communityCounts={communityCounts}
+          disabledCommunities={disabledCommunities}
+          relationCounts={relationCounts}
+          disabledRelations={disabledRelations}
+          confidenceCounts={confidenceCounts}
+          disabledConfidences={disabledConfidences}
           onToggleType={toggleType}
-          onClearFilters={() => setDisabledTypes(new Set())}
+          onToggleCommunity={toggleCommunity}
+          onToggleRelation={toggleRelation}
+          onToggleConfidence={toggleConfidence}
+          onClearFilters={clearFilters}
         />
       </div>
 
@@ -213,6 +361,7 @@ export default function GraphViewer() {
         onSearchTermChange={setSearchTerm}
         onSelectSearchResult={focusNode}
         onResetView={() => vizRef.current?.resetView()}
+        onFitGraph={() => vizRef.current?.fitGraph()}
         onFocusSelected={() => {
           if (selected) vizRef.current?.focusNode(selected.id);
         }}
@@ -223,8 +372,14 @@ export default function GraphViewer() {
         <NodeInspector
           node={selected}
           graphData={sourceGraph}
+          isShowingNeighbors={neighborhoodRootId === selected.id}
           onFocus={() => vizRef.current?.focusNode(selected.id)}
-          onClear={() => setSelected(null)}
+          onShowNeighbors={() => setNeighborhoodRootId(selected.id)}
+          onClearNeighbors={() => setNeighborhoodRootId(null)}
+          onClear={() => {
+            setSelected(null);
+            setNeighborhoodRootId(null);
+          }}
         />
       )}
     </div>
