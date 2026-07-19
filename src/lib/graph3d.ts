@@ -117,7 +117,6 @@ const EMPTY_HIGHLIGHT: HoverHighlight = {
   nodeIds: new Set(),
   linkKeys: new Set(),
 };
-const DIMMED_LINK_COLOR = "#222222";
 
 /**
  * The hover affordance answers "what is this node connected to?" — the hovered
@@ -257,10 +256,12 @@ export class Graph3DVisualization {
       .backgroundColor("#0a0a0a")
       .showNavInfo(false)
       .linkOpacity(0.4)
-      .linkWidth((l: any) => this.linkWidthFor(l))
+      .linkWidth(0.6)
       .linkDirectionalParticles((l: any) => linkParticleCount(l))
       .linkDirectionalParticleSpeed((l: any) => linkParticleSpeed(l))
-      .linkColor((l: any) => this.linkColorFor(l))
+      .linkColor((l: any) =>
+        l.confidence === "INFERRED" ? "#886644" : "#4A90E2",
+      )
       .nodeLabel((n: any) =>
         typeof n.group === "number"
           ? `${n.name} (${n.type}, community ${n.group})`
@@ -317,32 +318,21 @@ export class Graph3DVisualization {
     return TYPE_COLORS[node.type] || "#7ED321";
   }
 
-  private currentHighlight(): HoverHighlight {
-    if (this.hoveredId === null || !this.loadedData) return EMPTY_HIGHLIGHT;
-    return computeHoverHighlight(this.loadedData, this.hoveredId);
-  }
-
-  private linkColorFor(link: any): string {
-    const base = link.confidence === "INFERRED" ? "#886644" : "#4A90E2";
-    if (this.hoveredId === null) return base;
-    return this.currentHighlight().linkKeys.has(
-      linkKey(link.source, link.target),
-    )
-      ? base
-      : DIMMED_LINK_COLOR;
-  }
-
-  private linkWidthFor(link: any): number {
-    if (this.hoveredId === null) return 0.6;
-    return this.currentHighlight().linkKeys.has(
-      linkKey(link.source, link.target),
-    )
-      ? 1.5
-      : 0.6;
-  }
-
+  /**
+   * The hover affordance restyles the node meshes we own, in place. It must
+   * NOT call `graph.refresh()` or re-register link/node accessors: those set
+   * `_flushObjects` / trigger digests that rebuild every node mesh and every
+   * link + directional-particle system, which discards these in-place material
+   * mutations (visible flash) and locks on large graphs. `3d-force-graph` runs
+   * a continuous render loop, so mutating an existing material shows next frame
+   * on its own. Links keep their static styling; edge information is carried by
+   * the always-on flow particles.
+   */
   private applyHoverHighlight(): void {
-    const highlight = this.currentHighlight();
+    const highlight =
+      this.hoveredId !== null && this.loadedData
+        ? computeHoverHighlight(this.loadedData, this.hoveredId)
+        : EMPTY_HIGHLIGHT;
     for (const [id, mesh] of this.nodeMeshes) {
       const emphasis = nodeEmphasis(id, this.hoveredId, highlight);
       const material = mesh.material as THREE.MeshLambertMaterial;
@@ -353,11 +343,6 @@ export class Graph3DVisualization {
           ? material.color.clone()
           : new THREE.Color(0x000000);
     }
-    // Links are not custom three objects, so re-registering the accessors and
-    // refreshing is how their color/width pick up the new hover state.
-    this.graph.linkColor((l: any) => this.linkColorFor(l));
-    this.graph.linkWidth((l: any) => this.linkWidthFor(l));
-    this.graph.refresh();
   }
 
   private handleNodeClick(node: any): void {

@@ -112,20 +112,26 @@ describe("Graph3DVisualization hover affordance", () => {
     viz.dispose();
   });
 
-  it("fades links not incident to the hovered node", () => {
+  it("styles nodes in place without rebuilding the graph on hover", () => {
     const viz = new Graph3DVisualization(document.createElement("div"));
     viz.loadData(data);
     buildMeshes();
 
+    // linkColor/linkWidth are registered once at construction; capture that
+    // count so we can prove hover does not re-register them.
+    const linkColorFn = captured.linkColor.current;
+    const linkWidthFn = captured.linkWidth.current;
+
     captured.hover.current?.({ id: "a" });
 
-    // incident link keeps a real color; a non-incident link fades to grey
-    expect(captured.linkColor.current?.({ source: "a", target: "b" })).not.toBe(
-      "#222222",
-    );
-    expect(captured.linkColor.current?.({ source: "b", target: "c" })).toBe(
-      "#222222",
-    );
+    // refresh() sets _flushObjects=true, which rebuilds every node mesh and
+    // link/particle system — discarding in-place material mutations (flash)
+    // and locking on large graphs. Re-registering link accessors triggers the
+    // link digest, which is shared with linkDirectionalParticles (particle
+    // flash). Hover must do neither.
+    expect(captured.refresh).not.toHaveBeenCalled();
+    expect(captured.linkColor.current).toBe(linkColorFn);
+    expect(captured.linkWidth.current).toBe(linkWidthFn);
     viz.dispose();
   });
 
