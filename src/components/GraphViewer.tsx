@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Graph3DVisualization, GraphData, GraphNode } from "@/lib/graph3d";
+import {
+  createFpsMeter,
+  Graph3DVisualization,
+  GraphData,
+  GraphNode,
+  type PerfSnapshot,
+} from "@/lib/graph3d";
 import {
   fromGraphifyExport,
   isGraphifyExport,
@@ -10,10 +16,12 @@ import {
   GraphifyStats,
 } from "@/lib/graphifyAdapter";
 import { FilterPanel } from "./graph-viewer/FilterPanel";
+import { DebugOverlay } from "./graph-viewer/DebugOverlay";
 import { GraphToolbar } from "./graph-viewer/GraphToolbar";
 import { Legend } from "./graph-viewer/Legend";
 import { LoadPanel } from "./graph-viewer/LoadPanel";
 import { NodeInspector } from "./graph-viewer/NodeInspector";
+import { SettingsMenu } from "./graph-viewer/SettingsMenu";
 import styles from "./graph-viewer/GraphViewer.module.css";
 
 const SAMPLE_URL = "/sample/graph.json";
@@ -91,6 +99,7 @@ function nodeMatchesSearch(node: GraphNode, term: string): boolean {
 export default function GraphViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const vizRef = useRef<Graph3DVisualization | null>(null);
+  const loadStartRef = useRef<number | null>(null);
   const [sourceGraph, setSourceGraph] = useState<GraphData | null>(null);
   const [stats, setStats] = useState<GraphifyStats | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
@@ -110,6 +119,14 @@ export default function GraphViewer() {
     null,
   );
   const [searchTerm, setSearchTerm] = useState("");
+  const [debugVisible, setDebugVisible] = useState(false);
+  const [hoverEnabled, setHoverEnabled] = useState(true);
+  const [perf, setPerf] = useState<{
+    snapshot: PerfSnapshot | null;
+    fps: number;
+    frameMs: number;
+  }>({ snapshot: null, fps: 0, frameMs: 0 });
+  const [loadMs, setLoadMs] = useState<number | null>(null);
 
   const visibleGraph = useMemo(
     () =>
@@ -203,6 +220,50 @@ export default function GraphViewer() {
     vizRef.current?.loadData(visibleGraph);
   }, [visibleGraph]);
 
+  useEffect(() => {
+    vizRef.current?.setHoverEnabled(hoverEnabled);
+  }, [hoverEnabled]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "`") {
+        e.preventDefault();
+        setDebugVisible((visible) => !visible);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (!debugVisible) return;
+    const meter = createFpsMeter();
+    const requestFrame =
+      window.requestAnimationFrame ??
+      ((cb: FrameRequestCallback) =>
+        window.setTimeout(() => cb(performance.now()), 16));
+    const cancelFrame = window.cancelAnimationFrame ?? window.clearTimeout;
+    let raf = 0;
+    const sampleFrame = (now: number) => {
+      meter.sample(now);
+      raf = requestFrame(sampleFrame);
+    };
+    raf = requestFrame(sampleFrame);
+    const update = () => {
+      setPerf({
+        snapshot: vizRef.current?.getPerfSnapshot() ?? null,
+        fps: meter.fps,
+        frameMs: meter.frameMs,
+      });
+    };
+    update();
+    const interval = window.setInterval(update, 500);
+    return () => {
+      cancelFrame(raf);
+      window.clearInterval(interval);
+    };
+  }, [debugVisible]);
+
   function loadRaw(raw: unknown) {
     if (!isGraphifyExport(raw)) {
       setError("Not a recognized graph export (expected {nodes, links}).");
@@ -224,10 +285,15 @@ export default function GraphViewer() {
     setDisabledConfidences(new Set());
     setNeighborhoodRootId(null);
     setSourceGraph(data);
+    if (loadStartRef.current !== null) {
+      setLoadMs(performance.now() - loadStartRef.current);
+      loadStartRef.current = null;
+    }
   }
 
   async function loadSample() {
     setLoading(true);
+    loadStartRef.current = performance.now();
     try {
       const res = await fetch(SAMPLE_URL);
       const raw = await res.json();
@@ -243,6 +309,7 @@ export default function GraphViewer() {
     const file = e.target.files?.[0];
     if (!file) return;
     setLoading(true);
+    loadStartRef.current = performance.now();
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -358,6 +425,7 @@ export default function GraphViewer() {
         hasSelected={Boolean(selected)}
         searchTerm={searchTerm}
         searchResults={searchResults}
+        debugVisible={debugVisible}
         onSearchTermChange={setSearchTerm}
         onSelectSearchResult={focusNode}
         onResetView={() => vizRef.current?.resetView()}
@@ -365,8 +433,26 @@ export default function GraphViewer() {
         onFocusSelected={() => {
           if (selected) vizRef.current?.focusNode(selected.id);
         }}
+        onToggleDebug={() => setDebugVisible((visible) => !visible)}
       />
-      <Legend hasGraph={Boolean(sourceGraph)} />
+      <div className={styles.rightStack}>
+        <DebugOverlay
+          visible={debugVisible}
+          snapshot={perf.snapshot}
+          fps={perf.fps}
+          frameMs={perf.frameMs}
+          loadMs={loadMs}
+        />
+        {sourceGraph && (
+          <SettingsMenu
+            debugVisible={debugVisible}
+            hoverEnabled={hoverEnabled}
+            onToggleDebug={() => setDebugVisible((visible) => !visible)}
+            onToggleHover={() => setHoverEnabled((enabled) => !enabled)}
+          />
+        )}
+        <Legend hasGraph={Boolean(sourceGraph)} />
+      </div>
 
       {selected && (
         <NodeInspector

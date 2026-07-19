@@ -27,6 +27,8 @@ vi.mock("3d-force-graph", () => {
     "nodeLabel",
     "nodeThreeObject",
     "onNodeHover",
+    "onEngineTick",
+    "onEngineStop",
   ];
   const makeGraph = () => {
     const graph: Record<string, unknown> = {

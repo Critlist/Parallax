@@ -36,11 +36,13 @@ export interface GraphToolbarProps {
   hasSelected: boolean;
   searchTerm: string;
   searchResults: GraphNode[];
+  debugVisible: boolean;
   onSearchTermChange: (term: string) => void;
   onSelectSearchResult: (node: GraphNode) => void;
   onResetView: () => void;
   onFitGraph: () => void;
   onFocusSelected: () => void;
+  onToggleDebug: () => void;
 }
 
 export interface NodeInspectorProps {

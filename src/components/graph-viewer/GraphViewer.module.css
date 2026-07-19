@@ -23,10 +23,24 @@
   overflow: auto;
 }
 
+.rightStack {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  width: min(260px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  overflow: auto;
+}
+
 .panel,
 .toolbar,
 .legend,
-.inspector {
+.inspector,
+.settingsMenu {
   background: rgba(10, 10, 10, 0.86);
   color: #eeeeee;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -190,6 +204,10 @@
   font-size: 12px;
 }
 
+.secondaryButton[aria-pressed="true"] {
+  background: #4a90e2;
+}
+
 .searchResults {
   display: flex;
   max-height: 220px;
@@ -210,9 +228,7 @@
 }
 
 .legend {
-  position: absolute;
-  right: 16px;
-  top: 16px;
+  width: 100%;
   max-width: 260px;
   padding: 10px 12px;
   font-size: 12px;
@@ -312,12 +328,90 @@
   border: 0;
 }
 
+.debugOverlay {
+  z-index: 10;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(10, 10, 10, 0.82);
+  color: #e6e6e6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.settingsMenu {
+  width: 100%;
+  max-width: 260px;
+  font-size: 12px;
+}
+
+.settingsSummary {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  list-style-position: inside;
+}
+
+.settingsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.debugTitle {
+  display: block;
+  margin-bottom: 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.debugGrid {
+  margin: 0;
+}
+
+.debugRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.debugRow dt {
+  opacity: 0.7;
+}
+
+.debugRow dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 760px) {
   .toolbar {
     top: auto;
     bottom: 16px;
     left: 16px;
     width: calc(100vw - 32px);
+  }
+
+  .rightStack {
+    width: min(220px, calc(100vw - 32px));
   }
 
   .legend {

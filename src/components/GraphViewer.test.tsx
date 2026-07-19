@@ -14,6 +14,8 @@ const { graphInstances } = vi.hoisted(() => ({
     resetView: ReturnType<typeof vi.fn>;
     focusNode: ReturnType<typeof vi.fn>;
     fitGraph: ReturnType<typeof vi.fn>;
+    getPerfSnapshot: ReturnType<typeof vi.fn>;
+    setHoverEnabled: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     selectNode: (node: unknown) => void;
   }>,
@@ -31,6 +33,19 @@ vi.mock("@/lib/graph3d", async (importOriginal) => {
       resetView = vi.fn();
       focusNode = vi.fn();
       fitGraph = vi.fn();
+      setHoverEnabled = vi.fn();
+      getPerfSnapshot = vi.fn(() => ({
+        nodeCount: 0,
+        visibleEdgeCount: 0,
+        particleCount: 0,
+        engineRunning: false,
+        drawCalls: 0,
+        triangles: 0,
+        geometries: 0,
+        textures: 0,
+        materials: 0,
+        settleMs: null,
+      }));
       dispose = vi.fn();
       selectNode: (node: unknown) => void;
 
@@ -58,6 +73,69 @@ function fileInput(): HTMLInputElement {
 }
 
 describe("GraphViewer file loading", () => {
+  it("toggles the debug overlay with the backtick key", () => {
+    render(<GraphViewer />);
+
+    expect(screen.queryByLabelText(/performance overlay/i)).toBeNull();
+
+    fireEvent.keyDown(window, { key: "`" });
+    expect(screen.getByLabelText(/performance overlay/i)).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "`" });
+    expect(screen.queryByLabelText(/performance overlay/i)).toBeNull();
+  });
+
+  it("toggles the debug overlay from the toolbar", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [{ id: "a", label: "main()", file_type: "code", community: 0 }],
+      links: [],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/1 nodes .* 0 edges/i);
+    const debug = screen.getByRole("button", { name: /debug/i });
+    expect(debug).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(debug);
+    expect(screen.getByLabelText(/performance overlay/i)).toBeInTheDocument();
+    expect(debug).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(debug);
+    expect(screen.queryByLabelText(/performance overlay/i)).toBeNull();
+    expect(debug).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("toggles debug and hover highlighting from settings", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [{ id: "a", label: "main()", file_type: "code", community: 0 }],
+      links: [],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/1 nodes .* 0 edges/i);
+    fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+
+    const debug = screen.getByRole("checkbox", { name: /debug overlay/i });
+    fireEvent.click(debug);
+    expect(screen.getByLabelText(/performance overlay/i)).toBeInTheDocument();
+
+    const hover = screen.getByRole("checkbox", { name: /hover highlight/i });
+    expect(hover).toBeChecked();
+    fireEvent.click(hover);
+    expect(hover).not.toBeChecked();
+    expect(graphInstances[0].setHoverEnabled).toHaveBeenLastCalledWith(false);
+  });
+
   it("does not subscribe to a window-level node selection event", () => {
     const addEventListener = vi.spyOn(window, "addEventListener");
 

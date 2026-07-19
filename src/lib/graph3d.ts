@@ -94,6 +94,58 @@ export function linkParticleSpeed(link: { type?: string }): number {
   return link.type === "calls" ? 0.01 : 0.005;
 }
 
+export function sumParticleCount(
+  links: Array<{ type?: string; confidence?: string }>,
+): number {
+  return links.reduce((total, link) => total + linkParticleCount(link), 0);
+}
+
+// renderer.info tracks geometries and textures but NOT materials, so derive
+// the active material count by traversing the scene for unique instances.
+export function countSceneMaterials(scene: {
+  traverse(cb: (obj: any) => void): void;
+}): number {
+  const materials = new Set<unknown>();
+  scene.traverse((obj: any) => {
+    const material = obj?.material;
+    if (!material) return;
+    if (Array.isArray(material)) material.forEach((m) => materials.add(m));
+    else materials.add(material);
+  });
+  return materials.size;
+}
+
+export interface FpsMeter {
+  fps: number;
+  frameMs: number;
+  sample(now: number): void;
+}
+
+/**
+ * Moving-average FPS/frame-time meter. Call `sample(performance.now())` once
+ * per animation frame. Pure and deterministic so it can be unit-tested with
+ * fed timestamps instead of a real requestAnimationFrame loop.
+ */
+export function createFpsMeter(windowSize = 30): FpsMeter {
+  const deltas: number[] = [];
+  let last: number | null = null;
+  const meter: FpsMeter = {
+    fps: 0,
+    frameMs: 0,
+    sample(now: number) {
+      if (last !== null) {
+        deltas.push(now - last);
+        if (deltas.length > windowSize) deltas.shift();
+        const avg = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+        meter.frameMs = avg;
+        meter.fps = avg > 0 ? Math.round(1000 / avg) : 0;
+      }
+      last = now;
+    },
+  };
+  return meter;
+}
+
 export interface HoverHighlight {
   nodeIds: Set<string>;
   linkKeys: Set<string>;
@@ -117,6 +169,7 @@ const EMPTY_HIGHLIGHT: HoverHighlight = {
   nodeIds: new Set(),
   linkKeys: new Set(),
 };
+const DIMMED_LINK_COLOR = "#222222";
 
 /**
  * The hover affordance answers "what is this node connected to?" — the hovered
@@ -152,6 +205,19 @@ const LIT_EMISSIVE_INTENSITY = 0.6;
 export interface NodeEmphasis {
   opacity: number;
   emissiveIntensity: number;
+}
+
+export interface PerfSnapshot {
+  nodeCount: number;
+  visibleEdgeCount: number;
+  particleCount: number;
+  engineRunning: boolean;
+  drawCalls: number;
+  triangles: number;
+  geometries: number;
+  textures: number;
+  materials: number;
+  settleMs: number | null;
 }
 
 /**
@@ -211,6 +277,10 @@ export class Graph3DVisualization {
   private nodeMeshes = new Map<string, THREE.Mesh>();
   private loadedData: GraphData | null = null;
   private hoveredId: string | null = null;
+  private hoverEnabled = true;
+  private engineRunning = false;
+  private settleStartMs: number | null = null;
+  private settleMs: number | null = null;
   private resizeHandler: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
@@ -256,12 +326,10 @@ export class Graph3DVisualization {
       .backgroundColor("#0a0a0a")
       .showNavInfo(false)
       .linkOpacity(0.4)
-      .linkWidth(0.6)
+      .linkWidth((l: any) => this.linkWidthFor(l))
       .linkDirectionalParticles((l: any) => linkParticleCount(l))
       .linkDirectionalParticleSpeed((l: any) => linkParticleSpeed(l))
-      .linkColor((l: any) =>
-        l.confidence === "INFERRED" ? "#886644" : "#4A90E2",
-      )
+      .linkColor((l: any) => this.linkColorFor(l))
       .nodeLabel((n: any) =>
         typeof n.group === "number"
           ? `${n.name} (${n.type}, community ${n.group})`
@@ -282,7 +350,11 @@ export class Graph3DVisualization {
         return mesh;
       })
       .onNodeClick(this.handleNodeClick.bind(this))
-      .onNodeHover(this.handleNodeHover.bind(this));
+      .onNodeHover(this.handleNodeHover.bind(this))
+      .onEngineTick(() => {
+        this.engineRunning = true;
+      })
+      .onEngineStop(() => this.handleEngineStop());
 
     const scene = this.graph.scene();
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
@@ -318,6 +390,31 @@ export class Graph3DVisualization {
     return TYPE_COLORS[node.type] || "#7ED321";
   }
 
+  private currentHoverHighlight(): HoverHighlight {
+    return this.hoveredId !== null && this.loadedData
+      ? computeHoverHighlight(this.loadedData, this.hoveredId)
+      : EMPTY_HIGHLIGHT;
+  }
+
+  private linkColorFor(link: any): string {
+    const base = link.confidence === "INFERRED" ? "#886644" : "#4A90E2";
+    if (!this.hoverEnabled || this.hoveredId === null) return base;
+    return this.currentHoverHighlight().linkKeys.has(
+      linkKey(link.source, link.target),
+    )
+      ? base
+      : DIMMED_LINK_COLOR;
+  }
+
+  private linkWidthFor(link: any): number {
+    if (!this.hoverEnabled || this.hoveredId === null) return 0.6;
+    return this.currentHoverHighlight().linkKeys.has(
+      linkKey(link.source, link.target),
+    )
+      ? 1.5
+      : 0.6;
+  }
+
   /**
    * The hover affordance restyles the node meshes we own, in place. It must
    * NOT call `graph.refresh()` or re-register link/node accessors: those set
@@ -329,10 +426,7 @@ export class Graph3DVisualization {
    * the always-on flow particles.
    */
   private applyHoverHighlight(): void {
-    const highlight =
-      this.hoveredId !== null && this.loadedData
-        ? computeHoverHighlight(this.loadedData, this.hoveredId)
-        : EMPTY_HIGHLIGHT;
+    const highlight = this.currentHoverHighlight();
     for (const [id, mesh] of this.nodeMeshes) {
       const emphasis = nodeEmphasis(id, this.hoveredId, highlight);
       const material = mesh.material as THREE.MeshLambertMaterial;
@@ -351,9 +445,22 @@ export class Graph3DVisualization {
   }
 
   private handleNodeHover(node: any): void {
+    if (!this.hoverEnabled) {
+      this.container.style.cursor = "default";
+      this.hoveredId = null;
+      this.applyHoverHighlight();
+      return;
+    }
     this.container.style.cursor = node ? "pointer" : "default";
     this.hoveredId = node ? node.id : null;
     this.applyHoverHighlight();
+  }
+
+  private handleEngineStop(): void {
+    this.engineRunning = false;
+    if (this.settleStartMs !== null) {
+      this.settleMs = performance.now() - this.settleStartMs;
+    }
   }
 
   public loadData(data: GraphData): void {
@@ -362,6 +469,9 @@ export class Graph3DVisualization {
     // Drop meshes from any previous graph; graphData() rebuilds them via
     // nodeThreeObject for the new node set.
     this.nodeMeshes.clear();
+    this.settleStartMs = performance.now();
+    this.settleMs = null;
+    this.engineRunning = true;
     this.graph.graphData(data);
   }
 
@@ -381,6 +491,34 @@ export class Graph3DVisualization {
 
   public fitGraph(): void {
     this.graph.zoomToFit(1000, 80);
+  }
+
+  public setHoverEnabled(enabled: boolean): void {
+    this.hoverEnabled = enabled;
+    if (!enabled) {
+      this.container.style.cursor = "default";
+      this.hoveredId = null;
+      this.applyHoverHighlight();
+    }
+  }
+
+  public getPerfSnapshot(): PerfSnapshot | null {
+    if (!this.graph) return null;
+    const info = this.graph.renderer?.()?.info;
+    const data = this.graph.graphData?.() ?? { nodes: [], links: [] };
+    const scene = this.graph.scene?.();
+    return {
+      nodeCount: data.nodes.length,
+      visibleEdgeCount: data.links.length,
+      particleCount: sumParticleCount(data.links),
+      engineRunning: this.engineRunning,
+      drawCalls: info?.render?.calls ?? 0,
+      triangles: info?.render?.triangles ?? 0,
+      geometries: info?.memory?.geometries ?? 0,
+      textures: info?.memory?.textures ?? 0,
+      materials: scene ? countSceneMaterials(scene) : 0,
+      settleMs: this.settleMs,
+    };
   }
 
   public dispose(): void {
@@ -410,6 +548,10 @@ export class Graph3DVisualization {
       this.nodeMeshes.clear();
       this.loadedData = null;
       this.hoveredId = null;
+      this.hoverEnabled = true;
+      this.engineRunning = false;
+      this.settleStartMs = null;
+      this.settleMs = null;
     }
   }
 

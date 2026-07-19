@@ -6,11 +6,13 @@ export function GraphToolbar({
   hasSelected,
   searchTerm,
   searchResults,
+  debugVisible,
   onSearchTermChange,
   onSelectSearchResult,
   onResetView,
   onFitGraph,
   onFocusSelected,
+  onToggleDebug,
 }: GraphToolbarProps) {
   if (!hasGraph) return null;
 
@@ -39,6 +41,13 @@ export function GraphToolbar({
           disabled={!hasSelected}
         >
           Focus
+        </button>
+        <button
+          className={styles.secondaryButton}
+          onClick={onToggleDebug}
+          aria-pressed={debugVisible}
+        >
+          Debug
         </button>
       </div>
       {searchTerm.trim() && (

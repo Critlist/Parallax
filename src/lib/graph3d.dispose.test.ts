@@ -29,6 +29,8 @@ vi.mock("3d-force-graph", () => {
     "nodeThreeObject",
     "onNodeClick",
     "onNodeHover",
+    "onEngineTick",
+    "onEngineStop",
   ];
   const makeGraph = () => {
     const domElement = document.createElement("canvas");

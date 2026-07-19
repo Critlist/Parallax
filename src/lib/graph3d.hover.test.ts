@@ -22,6 +22,8 @@ vi.mock("3d-force-graph", () => {
     "graphData",
     "cameraPosition",
     "zoomToFit",
+    "onEngineTick",
+    "onEngineStop",
   ];
   const makeGraph = () => {
     const graph: Record<string, unknown> = {
@@ -135,6 +137,28 @@ describe("Graph3DVisualization hover affordance", () => {
     viz.dispose();
   });
 
+  it("fades and de-emphasizes links not incident to the hovered node", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    viz.loadData(data);
+    buildMeshes();
+
+    captured.hover.current?.({ id: "a" });
+
+    expect(captured.linkColor.current?.({ source: "a", target: "b" })).not.toBe(
+      "#222222",
+    );
+    expect(captured.linkWidth.current?.({ source: "a", target: "b" })).toBe(
+      1.5,
+    );
+    expect(captured.linkColor.current?.({ source: "b", target: "c" })).toBe(
+      "#222222",
+    );
+    expect(captured.linkWidth.current?.({ source: "b", target: "c" })).toBe(
+      0.6,
+    );
+    viz.dispose();
+  });
+
   it("restores normal opacity when hover ends", () => {
     const viz = new Graph3DVisualization(document.createElement("div"));
     viz.loadData(data);
@@ -148,6 +172,23 @@ describe("Graph3DVisualization hover affordance", () => {
     expect(
       (meshes.a.material as THREE.MeshLambertMaterial).emissiveIntensity,
     ).toBe(0);
+    viz.dispose();
+  });
+
+  it("can disable hover highlighting and restore normal node styling", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    viz.loadData(data);
+    const meshes = buildMeshes();
+
+    captured.hover.current?.({ id: "a" });
+    viz.setHoverEnabled(false);
+    captured.hover.current?.({ id: "a" });
+
+    expect((meshes.a.material as THREE.MeshLambertMaterial).opacity).toBe(0.9);
+    expect(
+      (meshes.a.material as THREE.MeshLambertMaterial).emissiveIntensity,
+    ).toBe(0);
+    expect((meshes.c.material as THREE.MeshLambertMaterial).opacity).toBe(0.9);
     viz.dispose();
   });
 });
