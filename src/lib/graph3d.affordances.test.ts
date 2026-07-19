@@ -3,6 +3,7 @@ import {
   computeHoverHighlight,
   linkParticleCount,
   linkParticleSpeed,
+  nodeEmphasis,
   type GraphData,
 } from "./graph3d";
 
@@ -89,5 +90,35 @@ describe("computeHoverHighlight", () => {
     const h = computeHoverHighlight(simGraph, "a");
     expect(h.nodeIds.has("b")).toBe(true);
     expect(h.linkKeys.has("a->b")).toBe(true);
+  });
+});
+
+describe("nodeEmphasis", () => {
+  const highlight = computeHoverHighlight(graph, "a"); // { a, b, c }, a hovered
+
+  it("lights the hovered node (full opacity + glow)", () => {
+    const e = nodeEmphasis("a", "a", highlight);
+    expect(e.opacity).toBe(1);
+    expect(e.emissiveIntensity).toBeGreaterThan(0);
+  });
+
+  it("keeps neighbors at normal opacity with no glow", () => {
+    const e = nodeEmphasis("b", "a", highlight);
+    expect(e.opacity).toBe(0.9);
+    expect(e.emissiveIntensity).toBe(0);
+  });
+
+  it("dims non-neighbors while a node is hovered", () => {
+    const e = nodeEmphasis("d", "a", highlight);
+    expect(e.opacity).toBeLessThan(0.9);
+    expect(e.emissiveIntensity).toBe(0);
+  });
+
+  it("is normal for everyone when nothing is hovered", () => {
+    const empty = computeHoverHighlight(graph, null);
+    expect(nodeEmphasis("a", null, empty)).toEqual({
+      opacity: 0.9,
+      emissiveIntensity: 0,
+    });
   });
 });

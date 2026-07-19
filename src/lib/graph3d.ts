@@ -140,6 +140,38 @@ export function computeHoverHighlight(
   return { nodeIds, linkKeys };
 }
 
+export const BASE_NODE_OPACITY = 0.9;
+const DIMMED_NODE_OPACITY = 0.15;
+const LIT_EMISSIVE_INTENSITY = 0.6;
+
+export interface NodeEmphasis {
+  opacity: number;
+  emissiveIntensity: number;
+}
+
+/**
+ * Emphasis states, driven entirely by the hover affordance:
+ *   lit    — the hovered node (full opacity + glow)
+ *   normal — a neighbor, or no active hover
+ *   dimmed — everything else while a node is hovered
+ */
+export function nodeEmphasis(
+  nodeId: string,
+  hoveredId: string | null,
+  highlight: HoverHighlight,
+): NodeEmphasis {
+  if (hoveredId === null || highlight.nodeIds.size === 0) {
+    return { opacity: BASE_NODE_OPACITY, emissiveIntensity: 0 };
+  }
+  if (nodeId === hoveredId) {
+    return { opacity: 1, emissiveIntensity: LIT_EMISSIVE_INTENSITY };
+  }
+  if (highlight.nodeIds.has(nodeId)) {
+    return { opacity: BASE_NODE_OPACITY, emissiveIntensity: 0 };
+  }
+  return { opacity: DIMMED_NODE_OPACITY, emissiveIntensity: 0 };
+}
+
 interface Vec3 {
   x: number;
   y: number;
