@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+# use bun.lock as the single source of truth
+package-lock.json
 /.pnp
 .pnp.*
 .yarn/*
@@ -35,7 +37,7 @@ yarn-error.log*
 
 # vercel
 .vercel
-
+.remember/*
 # typescript
 *.tsbuildinfo
 next-env.d.ts

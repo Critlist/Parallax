@@ -1,0 +1,16 @@
+# Build output
+.next/
+out/
+build/
+coverage/
+
+# Dependencies & lockfiles
+node_modules/
+bun.lock
+
+# Generated
+*.tsbuildinfo
+next-env.d.ts
+
+# Graphify output / test fixtures (generated artifacts)
+fixtures/

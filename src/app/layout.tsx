@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Parallax",
-  description: "3D viewer for Graphify (and other node_link_data) graph exports",
+  description:
+    "3D viewer for Graphify (and other node_link_data) graph exports",
 };
 
 export default function RootLayout({
