@@ -35,7 +35,8 @@ Licensed under MIT. See `LICENSE`.
 Graphify export -> adapter -> canonical graph model -> Graph3DVisualization -> Three.js / 3d-force-graph
 ```
 
-- Omnigraph supplied the original 3D renderer idea and interaction model.
+- [Omnigraph](https://github.com/Critlist/omnigraph) supplied the original 3D
+  renderer idea and interaction model.
 - `src/lib/graphifyAdapter.ts` validates and maps Graphify/networkx
   `node_link_data` style exports into the renderer's `GraphData` shape.
 - `src/lib/graph3d.ts` owns the 3D renderer boundary: force graph setup,
