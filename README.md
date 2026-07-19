@@ -1,9 +1,9 @@
 # Parallax
 
 Parallax is a small local Next.js app for viewing semantic code graphs in 3D.
-It revives the 3D renderer from
-[Omnigraph](https://github.com/Critlist/omnigraph), an older Tauri/Rust desktop
-code-visualization experiment, and points it at
+It reuses the 3D renderer from
+[Omnigraph](https://github.com/Critlist/omnigraph), an earlier Tauri/Rust code
+visualization project, and points it at
 [Graphify](https://github.com/Graphify-Labs/graphify)-style `graph.json`
 exports.
 
@@ -13,8 +13,8 @@ graph exports. It adapts an existing graph export into a canonical graph model
 and renders that model with Three.js through `3d-force-graph`.
 
 If Graphify gives you a `graph.json`, Parallax gives you a local way to inspect
-it in 3D: load the file in your browser, search for nodes, focus neighborhoods,
-filter by semantic metadata, and keep the data on your machine.
+it in 3D: load the file, search for nodes, focus neighborhoods, filter semantic
+metadata, and keep the data on your own machine.
 
 ## Screenshots
 
@@ -31,6 +31,9 @@ producing the semantic graph data that renderer needs.
 The app can load the included sample or a local compatible JSON file in the
 browser. There is no backend and no upload path; selected files stay local to
 the browser session.
+
+Parallax has been tested locally with Graphify exports ranging from roughly 800
+nodes to 35,000+ nodes and 95,000+ edges.
 
 Licensed under MIT. See `LICENSE`.
 
@@ -176,3 +179,10 @@ public/examples/
   callback, keeping selection state local to the viewer component.
 - CI runs formatting, linting, typechecking, tests, and a production build on
   GitHub Actions.
+
+## Planned
+
+- Community-level LOD.
+- Expand-on-demand navigation.
+- Additional semantic graph adapters.
+- Larger graph optimizations.
