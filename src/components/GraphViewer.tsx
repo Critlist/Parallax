@@ -96,6 +96,16 @@ function nodeMatchesSearch(node: GraphNode, term: string): boolean {
   return haystack.includes(term.toLowerCase());
 }
 
+function isEditableKeyTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
+}
+
 export default function GraphViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const vizRef = useRef<Graph3DVisualization | null>(null);
@@ -226,6 +236,7 @@ export default function GraphViewer() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (isEditableKeyTarget(e.target)) return;
       if (e.key === "`") {
         e.preventDefault();
         setDebugVisible((visible) => !visible);
@@ -264,14 +275,21 @@ export default function GraphViewer() {
     };
   }, [debugVisible]);
 
+  function clearLoadTiming() {
+    loadStartRef.current = null;
+    setLoadMs(null);
+  }
+
   function loadRaw(raw: unknown) {
     if (!isGraphifyExport(raw)) {
       setError("Not a recognized graph export (expected {nodes, links}).");
+      clearLoadTiming();
       return;
     }
     const refError = validateGraphReferences(raw);
     if (refError) {
       setError(refError);
+      clearLoadTiming();
       return;
     }
     setError(null);
@@ -294,12 +312,14 @@ export default function GraphViewer() {
   async function loadSample() {
     setLoading(true);
     loadStartRef.current = performance.now();
+    setLoadMs(null);
     try {
       const res = await fetch(SAMPLE_URL);
       const raw = await res.json();
       loadRaw(raw);
     } catch {
       setError("Failed to load sample graph.");
+      clearLoadTiming();
     } finally {
       setLoading(false);
     }
@@ -310,6 +330,7 @@ export default function GraphViewer() {
     if (!file) return;
     setLoading(true);
     loadStartRef.current = performance.now();
+    setLoadMs(null);
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -317,12 +338,14 @@ export default function GraphViewer() {
         loadRaw(raw);
       } catch {
         setError("Could not parse that file as JSON.");
+        clearLoadTiming();
       } finally {
         setLoading(false);
       }
     };
     reader.onerror = () => {
       setError("Could not read that file.");
+      clearLoadTiming();
       setLoading(false);
     };
     reader.readAsText(file);

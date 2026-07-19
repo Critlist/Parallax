@@ -85,6 +85,26 @@ describe("GraphViewer file loading", () => {
     expect(screen.queryByLabelText(/performance overlay/i)).toBeNull();
   });
 
+  it("does not toggle the debug overlay when typing backtick in the search field", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [{ id: "a", label: "main()", file_type: "code", community: 0 }],
+      links: [],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/1 nodes .* 0 edges/i);
+    fireEvent.keyDown(screen.getByRole("searchbox", { name: /search/i }), {
+      key: "`",
+    });
+
+    expect(screen.queryByLabelText(/performance overlay/i)).toBeNull();
+  });
+
   it("toggles the debug overlay from the toolbar", async () => {
     render(<GraphViewer />);
     const graph = JSON.stringify({
@@ -172,6 +192,44 @@ describe("GraphViewer file loading", () => {
     } finally {
       globalThis.FileReader = original;
     }
+  });
+
+  it("clears stale load timing after a failed load", async () => {
+    const now = vi
+      .spyOn(performance, "now")
+      .mockReturnValueOnce(100)
+      .mockReturnValueOnce(150)
+      .mockReturnValue(200);
+    render(<GraphViewer />);
+    const valid = JSON.stringify({
+      nodes: [{ id: "a", label: "main()", file_type: "code", community: 0 }],
+      links: [],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([valid], "graph.json", { type: "application/json" })],
+      },
+    });
+    await screen.findByText(/1 nodes .* 0 edges/i);
+    fireEvent.keyDown(window, { key: "`" });
+    expect(screen.getByLabelText(/performance overlay/i)).toHaveTextContent(
+      /load\d+ ms/i,
+    );
+
+    const badShape = JSON.stringify({ nodes: [{ label: "no id" }], links: [] });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [
+          new File([badShape], "graph.json", { type: "application/json" }),
+        ],
+      },
+    });
+
+    await screen.findByText(/not a recognized graph export/i);
+    expect(screen.getByLabelText(/performance overlay/i)).toHaveTextContent(
+      /load-/i,
+    );
+    now.mockRestore();
   });
 
   it("rejects a file with links that reference unknown node ids", async () => {

@@ -545,6 +545,9 @@ export class Graph3DVisualization {
     // Drop meshes from any previous graph; graphData() rebuilds them via
     // nodeThreeObject for the new node set.
     this.nodeMeshes.clear();
+    this.hoveredId = null;
+    this.container.style.cursor = "default";
+    this.clearHoverEdges();
     this.settleStartMs = performance.now();
     this.settleMs = null;
     this.engineRunning = true;

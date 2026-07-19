@@ -202,6 +202,34 @@ describe("Graph3DVisualization hover affordance", () => {
     viz.dispose();
   });
 
+  it("clears hover edges and hover state when graph data is replaced", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    viz.loadData({
+      nodes: data.nodes,
+      links: [
+        {
+          source: { id: "a", x: 1, y: 2, z: 3 },
+          target: { id: "b", x: 4, y: 5, z: 6 },
+          type: "calls",
+        } as never,
+      ],
+    });
+    buildMeshes();
+    captured.hover.current?.({ id: "a" });
+    const overlay = captured.sceneAdds.find(
+      (obj) => obj instanceof THREE.Group,
+    ) as THREE.Group;
+    expect(overlay.children).toHaveLength(1);
+
+    viz.loadData({ nodes: [{ id: "c", name: "c", type: "code" }], links: [] });
+
+    expect(overlay.children).toHaveLength(0);
+    expect(captured.linkColor.current?.({ source: "x", target: "y" })).toBe(
+      "#4A90E2",
+    );
+    viz.dispose();
+  });
+
   it("restores normal opacity when hover ends", () => {
     const viz = new Graph3DVisualization(document.createElement("div"));
     viz.loadData(data);
