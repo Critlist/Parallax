@@ -110,7 +110,7 @@ public/sample/graph.json
   objects.
 - Link confidence is carried through the canonical model but only the
   confidence label currently affects link color.
-- Node selection is bridged with a small window-level `CustomEvent`; that is
-  acceptable for the current single-viewer UI but should be revisited if more
-  components need selection state.
-- There is no CI configuration yet.
+- Node selection is passed from the renderer to React through an explicit
+  callback, keeping selection state local to the viewer component.
+- CI runs formatting, linting, typechecking, tests, and a production build on
+  GitHub Actions.

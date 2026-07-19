@@ -35,6 +35,17 @@ function fileInput(): HTMLInputElement {
 }
 
 describe("GraphViewer file loading", () => {
+  it("does not subscribe to a window-level node selection event", () => {
+    const addEventListener = vi.spyOn(window, "addEventListener");
+
+    render(<GraphViewer />);
+
+    expect(addEventListener).not.toHaveBeenCalledWith(
+      "node-selected",
+      expect.any(Function),
+    );
+  });
+
   it("surfaces an error and clears the loading state when the file read fails", async () => {
     const original = globalThis.FileReader;
     class ErroringFileReader {
