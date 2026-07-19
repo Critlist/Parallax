@@ -27,6 +27,7 @@ export function DebugOverlay({
     ["nodes", `${snapshot?.nodeCount ?? 0}`],
     ["visible edges", `${snapshot?.visibleEdgeCount ?? 0}`],
     ["particles", `${snapshot?.particleCount ?? 0}`],
+    ["mode", snapshot?.renderMode ?? "-"],
     ["engine", snapshot?.engineRunning ? "running" : "stopped"],
     ["draw calls", `${snapshot?.drawCalls ?? 0}`],
     ["triangles", `${snapshot?.triangles ?? 0}`],

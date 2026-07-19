@@ -39,6 +39,7 @@ vi.mock("@/lib/graph3d", async (importOriginal) => {
         nodeCount: 0,
         visibleEdgeCount: 0,
         particleCount: 0,
+        renderMode: "standard",
         engineRunning: false,
         drawCalls: 0,
         triangles: 0,

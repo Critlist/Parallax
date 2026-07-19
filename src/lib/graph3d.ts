@@ -61,7 +61,49 @@ const MAX_DEVICE_PIXEL_RATIO = 1.25;
 const LARGE_GRAPH_PARTICLE_BUDGET = 6000;
 const LINK_PARTICLE_RESOLUTION = 2;
 const RENDER_PARTICLE_COUNT = "__parallaxParticleCount";
+const RENDER_LINK_VISIBLE = "__parallaxRenderVisible";
+const STRESS_NODE_THRESHOLD = 20_000;
+const STRESS_EDGE_THRESHOLD = 50_000;
+const STRESS_LINK_BUDGET = 24_000;
 const OWNED_DISPOSE = Symbol("parallaxOwnedDispose");
+
+export type RenderMode = "standard" | "stress";
+
+export interface GraphRenderPreset {
+  mode: RenderMode;
+  forceEngine: "d3" | "ngraph";
+  particleBudget: number;
+  linkBudget: number;
+  linkOpacity: number;
+  warmupTicks: number;
+  cooldownTicks: number;
+  cooldownTime: number;
+  d3AlphaDecay: number;
+}
+
+const STANDARD_RENDER_PRESET: GraphRenderPreset = {
+  mode: "standard",
+  forceEngine: "d3",
+  particleBudget: LARGE_GRAPH_PARTICLE_BUDGET,
+  linkBudget: Number.POSITIVE_INFINITY,
+  linkOpacity: 0.4,
+  warmupTicks: 0,
+  cooldownTicks: Number.POSITIVE_INFINITY,
+  cooldownTime: 15_000,
+  d3AlphaDecay: 0.0228,
+};
+
+const STRESS_RENDER_PRESET: GraphRenderPreset = {
+  mode: "stress",
+  forceEngine: "d3",
+  particleBudget: 0,
+  linkBudget: STRESS_LINK_BUDGET,
+  linkOpacity: 0.14,
+  warmupTicks: 40,
+  cooldownTicks: 180,
+  cooldownTime: 6000,
+  d3AlphaDecay: 0.045,
+};
 
 type ProtectedDisposable<T extends { dispose: () => void }> = T & {
   [OWNED_DISPOSE]?: () => void;
@@ -206,6 +248,76 @@ export function assignParticleBudget(
       item.link[RENDER_PARTICLE_COUNT] = pass;
       remaining -= 1;
     }
+  }
+}
+
+export function graphRenderPreset(data: GraphData): GraphRenderPreset {
+  if (
+    data.nodes.length > STRESS_NODE_THRESHOLD ||
+    data.links.length > STRESS_EDGE_THRESHOLD
+  ) {
+    return STRESS_RENDER_PRESET;
+  }
+  return STANDARD_RENDER_PRESET;
+}
+
+export function linkRenderVisible(link: GraphLink): boolean {
+  const visible = (link as Record<string, unknown>)[RENDER_LINK_VISIBLE];
+  return visible !== false;
+}
+
+function linkRenderPriority(
+  link: GraphLink,
+  nodesById: Map<string, GraphNode>,
+): number {
+  const source = nodesById.get(endpointId(link.source));
+  const target = nodesById.get(endpointId(link.target));
+  const bridgesCommunity =
+    typeof source?.group === "number" &&
+    typeof target?.group === "number" &&
+    source.group !== target.group;
+  const relation = link.type ?? "related";
+  let score = bridgesCommunity ? 50 : 0;
+
+  if (relation === "calls") score += 45;
+  else if (relation === "imports" || relation === "imports_from") score += 38;
+  else if (relation === "contains") score += 30;
+  else if (relation === "references") score += 24;
+
+  if (link.confidence === "EXTRACTED") score += 18;
+  else if (link.confidence === "AMBIGUOUS") score += 6;
+
+  if (typeof link.value === "number") score += Math.min(link.value, 5);
+  return score;
+}
+
+export function assignLinkRenderBudget(
+  data: GraphData,
+  preset: GraphRenderPreset,
+): void {
+  if (data.links.length <= preset.linkBudget) {
+    data.links.forEach((link) => {
+      link[RENDER_LINK_VISIBLE] = true;
+    });
+    return;
+  }
+
+  data.links.forEach((link) => {
+    link[RENDER_LINK_VISIBLE] = false;
+  });
+
+  const nodesById = new Map(data.nodes.map((node) => [node.id, node]));
+  const visible = data.links
+    .map((link, index) => ({
+      index,
+      link,
+      priority: linkRenderPriority(link, nodesById),
+    }))
+    .sort((a, b) => b.priority - a.priority || a.index - b.index)
+    .slice(0, preset.linkBudget);
+
+  for (const item of visible) {
+    item.link[RENDER_LINK_VISIBLE] = true;
   }
 }
 
@@ -449,6 +561,7 @@ export interface PerfSnapshot {
   nodeCount: number;
   visibleEdgeCount: number;
   particleCount: number;
+  renderMode: RenderMode;
   engineRunning: boolean;
   drawCalls: number;
   triangles: number;
@@ -545,6 +658,7 @@ export class Graph3DVisualization {
   private hoverIndex = new Map<string, HoverNeighborhood>();
   private hoveredId: string | null = null;
   private hoverEnabled = true;
+  private renderMode: RenderMode = "standard";
   private engineRunning = false;
   private settleStartMs: number | null = null;
   private settleMs: number | null = null;
@@ -603,8 +717,9 @@ export class Graph3DVisualization {
       .height(height)
       .backgroundColor("#0a0a0a")
       .showNavInfo(false)
-      .linkOpacity(0.4)
+      .linkOpacity(STANDARD_RENDER_PRESET.linkOpacity)
       .linkWidth(0.6)
+      .linkVisibility((l: any) => linkRenderVisible(l))
       .linkDirectionalParticles((l: any) => linkParticleCount(l))
       .linkDirectionalParticleResolution(LINK_PARTICLE_RESOLUTION)
       .linkDirectionalParticleSpeed((l: any) => linkParticleSpeed(l))
@@ -792,11 +907,25 @@ export class Graph3DVisualization {
     }
   }
 
+  private applyRenderPreset(preset: GraphRenderPreset): void {
+    this.renderMode = preset.mode;
+    this.graph
+      .forceEngine(preset.forceEngine)
+      .linkOpacity(preset.linkOpacity)
+      .warmupTicks(preset.warmupTicks)
+      .cooldownTicks(preset.cooldownTicks)
+      .cooldownTime(preset.cooldownTime)
+      .d3AlphaDecay(preset.d3AlphaDecay);
+  }
+
   public loadData(data: GraphData): void {
+    const preset = graphRenderPreset(data);
     this.nodesById = new Map(data.nodes.map((node) => [node.id, node]));
     this.loadedData = data;
     this.hoverIndex = buildHoverHighlightIndex(data);
-    assignParticleBudget(data.links);
+    assignParticleBudget(data.links, preset.particleBudget);
+    assignLinkRenderBudget(data, preset);
+    this.applyRenderPreset(preset);
     // Drop meshes from any previous graph; graphData() rebuilds them via
     // nodeThreeObject for the new node set.
     this.nodeMeshes.clear();
@@ -842,10 +971,12 @@ export class Graph3DVisualization {
     const info = this.graph.renderer?.()?.info;
     const data = this.graph.graphData?.() ?? { nodes: [], links: [] };
     const scene = this.graph.scene?.();
+    const visibleLinks = data.links.filter(linkRenderVisible);
     return {
       nodeCount: data.nodes.length,
-      visibleEdgeCount: data.links.length,
+      visibleEdgeCount: visibleLinks.length,
       particleCount: sumParticleCount(data.links),
+      renderMode: this.renderMode,
       engineRunning: this.engineRunning,
       drawCalls: info?.render?.calls ?? 0,
       triangles: info?.render?.triangles ?? 0,
@@ -897,6 +1028,7 @@ export class Graph3DVisualization {
       this.hoverIndex.clear();
       this.hoveredId = null;
       this.hoverEnabled = true;
+      this.renderMode = "standard";
       this.engineRunning = false;
       this.settleStartMs = null;
       this.settleMs = null;

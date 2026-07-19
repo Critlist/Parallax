@@ -5,6 +5,13 @@ const captured = vi.hoisted(() => ({
   engineStop: { current: null as (() => void) | null },
   particleResolution: vi.fn(),
   pixelRatio: vi.fn(),
+  forceEngine: vi.fn(),
+  linkOpacity: vi.fn(),
+  linkVisibility: { current: null as ((l: unknown) => boolean) | null },
+  warmupTicks: vi.fn(),
+  cooldownTicks: vi.fn(),
+  cooldownTime: vi.fn(),
+  d3AlphaDecay: vi.fn(),
 }));
 
 vi.mock("3d-force-graph", () => {
@@ -13,7 +20,6 @@ vi.mock("3d-force-graph", () => {
     "height",
     "backgroundColor",
     "showNavInfo",
-    "linkOpacity",
     "linkWidth",
     "linkDirectionalParticles",
     "linkDirectionalParticleSpeed",
@@ -55,6 +61,34 @@ vi.mock("3d-force-graph", () => {
       _destructor: vi.fn(),
     };
     for (const b of builders) graph[b] = () => graph;
+    graph.forceEngine = (value: string) => {
+      captured.forceEngine(value);
+      return graph;
+    };
+    graph.linkOpacity = (value: number) => {
+      captured.linkOpacity(value);
+      return graph;
+    };
+    graph.linkVisibility = (fn: (l: unknown) => boolean) => {
+      captured.linkVisibility.current = fn;
+      return graph;
+    };
+    graph.warmupTicks = (value: number) => {
+      captured.warmupTicks(value);
+      return graph;
+    };
+    graph.cooldownTicks = (value: number) => {
+      captured.cooldownTicks(value);
+      return graph;
+    };
+    graph.cooldownTime = (value: number) => {
+      captured.cooldownTime(value);
+      return graph;
+    };
+    graph.d3AlphaDecay = (value: number) => {
+      captured.d3AlphaDecay(value);
+      return graph;
+    };
     graph.linkDirectionalParticleResolution = (value: number) => {
       captured.particleResolution(value);
       return graph;
@@ -81,6 +115,13 @@ afterEach(() => {
   captured.engineStop.current = null;
   captured.particleResolution.mockClear();
   captured.pixelRatio.mockClear();
+  captured.forceEngine.mockClear();
+  captured.linkOpacity.mockClear();
+  captured.linkVisibility.current = null;
+  captured.warmupTicks.mockClear();
+  captured.cooldownTicks.mockClear();
+  captured.cooldownTime.mockClear();
+  captured.d3AlphaDecay.mockClear();
 });
 
 describe("Graph3DVisualization engine state", () => {
@@ -146,6 +187,35 @@ describe("getPerfSnapshot", () => {
     expect(snap.geometries).toBe(5);
     expect(snap.textures).toBe(1);
     expect(snap.materials).toBeGreaterThanOrEqual(1);
+    viz.dispose();
+  });
+
+  it("applies the stress preset to very large graphs on load", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    const nodes = Array.from({ length: 20001 }, (_, index) => ({
+      id: `n-${index}`,
+      name: `n-${index}`,
+      type: "code",
+      group: index % 2,
+    }));
+    const links = Array.from({ length: 10 }, (_, index) => ({
+      source: `n-${index}`,
+      target: `n-${index + 1}`,
+      type: "contains",
+      confidence: "EXTRACTED",
+    }));
+
+    viz.loadData({ nodes, links });
+
+    expect(viz.getPerfSnapshot()?.renderMode).toBe("stress");
+    expect(captured.forceEngine).toHaveBeenLastCalledWith("d3");
+    expect(captured.linkOpacity).toHaveBeenLastCalledWith(0.14);
+    expect(captured.warmupTicks).toHaveBeenLastCalledWith(40);
+    expect(captured.cooldownTicks).toHaveBeenLastCalledWith(180);
+    expect(captured.cooldownTime).toHaveBeenLastCalledWith(6000);
+    expect(captured.d3AlphaDecay).toHaveBeenLastCalledWith(0.045);
+    expect(captured.linkVisibility.current).toEqual(expect.any(Function));
+    expect(viz.getPerfSnapshot()?.particleCount).toBe(0);
     viz.dispose();
   });
 

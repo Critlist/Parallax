@@ -22,6 +22,7 @@ vi.mock("3d-force-graph", () => {
     "showNavInfo",
     "linkOpacity",
     "linkWidth",
+    "linkVisibility",
     "linkDirectionalParticles",
     "linkDirectionalParticleSpeed",
     "linkDirectionalParticleResolution",
@@ -32,6 +33,11 @@ vi.mock("3d-force-graph", () => {
     "onNodeHover",
     "onEngineTick",
     "onEngineStop",
+    "forceEngine",
+    "warmupTicks",
+    "cooldownTicks",
+    "cooldownTime",
+    "d3AlphaDecay",
   ];
   const makeGraph = () => {
     const domElement = document.createElement("canvas");

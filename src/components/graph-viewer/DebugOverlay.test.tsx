@@ -7,6 +7,7 @@ const snap: PerfSnapshot = {
   nodeCount: 12,
   visibleEdgeCount: 20,
   particleCount: 33,
+  renderMode: "stress",
   engineRunning: true,
   drawCalls: 7,
   triangles: 4200,
@@ -45,5 +46,7 @@ describe("DebugOverlay", () => {
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText(/nodes/i)).toBeInTheDocument();
     expect(screen.getByText(/running/i)).toBeInTheDocument();
+    expect(screen.getByText(/mode/i)).toBeInTheDocument();
+    expect(screen.getByText(/stress/i)).toBeInTheDocument();
   });
 });
