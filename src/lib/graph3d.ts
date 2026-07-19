@@ -94,6 +94,52 @@ export function linkParticleSpeed(link: { type?: string }): number {
   return link.type === "calls" ? 0.01 : 0.005;
 }
 
+export interface HoverHighlight {
+  nodeIds: Set<string>;
+  linkKeys: Set<string>;
+}
+
+// A link endpoint is an id string before the force sim runs and a node object
+// (with `id`) afterward; normalize both to the id string.
+export function endpointId(endpoint: unknown): string {
+  if (typeof endpoint === "string") return endpoint;
+  if (endpoint && typeof endpoint === "object" && "id" in endpoint) {
+    return String((endpoint as { id: unknown }).id);
+  }
+  return String(endpoint);
+}
+
+export function linkKey(source: unknown, target: unknown): string {
+  return `${endpointId(source)}->${endpointId(target)}`;
+}
+
+/**
+ * The hover affordance answers "what is this node connected to?" — the hovered
+ * node plus its direct neighbors and the links between them. Empty when nothing
+ * (or an unknown node) is hovered, which the renderer reads as "restore all".
+ */
+export function computeHoverHighlight(
+  data: GraphData,
+  hoveredId: string | null,
+): HoverHighlight {
+  const nodeIds = new Set<string>();
+  const linkKeys = new Set<string>();
+  if (hoveredId === null || !data.nodes.some((n) => n.id === hoveredId)) {
+    return { nodeIds, linkKeys };
+  }
+  nodeIds.add(hoveredId);
+  for (const link of data.links) {
+    const source = endpointId(link.source);
+    const target = endpointId(link.target);
+    if (source === hoveredId || target === hoveredId) {
+      nodeIds.add(source);
+      nodeIds.add(target);
+      linkKeys.add(linkKey(link.source, link.target));
+    }
+  }
+  return { nodeIds, linkKeys };
+}
+
 interface Vec3 {
   x: number;
   y: number;
