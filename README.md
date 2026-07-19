@@ -18,9 +18,9 @@ filter by semantic metadata, and keep the data on your machine.
 
 ## Screenshots
 
-![Dense large Graphify export rendered in Parallax](public/screenshots/parallax-large-dense.png)
+![Click Graphify example loaded in Parallax](public/screenshots/parallax-click-example.png)
 
-![Zoomed-out large Graphify export fit in the Parallax viewport](public/screenshots/parallax-large-fit.png)
+![Dense large Graphify export rendered in Parallax](public/screenshots/parallax-large-dense.png)
 
 ## Current Status
 
