@@ -636,6 +636,70 @@ export function computeCameraPosition(node: Vec3, distance: number): Vec3 {
   };
 }
 
+export interface CameraFrame {
+  position: Vec3;
+  lookAt: Vec3;
+}
+
+const SECTION_CAMERA_MIN_DISTANCE = 140;
+const SECTION_CAMERA_RADIUS_MULTIPLIER = 2.6;
+
+function finitePosition(candidate: unknown): Vec3 | null {
+  if (!candidate || typeof candidate !== "object") return null;
+  const { x, y, z } = candidate as Partial<Vec3>;
+  if (
+    typeof x !== "number" ||
+    typeof y !== "number" ||
+    typeof z !== "number" ||
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(z)
+  ) {
+    return null;
+  }
+  return { x, y, z };
+}
+
+export function computeSectionCameraFrame(
+  nodes: GraphNode[],
+  nodeIds: Set<string>,
+  fallbackNode: GraphNode,
+): CameraFrame {
+  const lookAt = finitePosition(fallbackNode) ?? { x: 0, y: 0, z: 0 };
+  const positions = nodes
+    .filter((node) => nodeIds.has(node.id))
+    .map(finitePosition)
+    .filter((position): position is Vec3 => position !== null);
+
+  if (positions.length === 0) {
+    return {
+      lookAt,
+      position: { x: lookAt.x, y: lookAt.y, z: lookAt.z + 100 },
+    };
+  }
+  const radius = positions.reduce(
+    (maxRadius, position) =>
+      Math.max(
+        maxRadius,
+        Math.hypot(
+          position.x - lookAt.x,
+          position.y - lookAt.y,
+          position.z - lookAt.z,
+        ),
+      ),
+    0,
+  );
+  const distance = Math.max(
+    SECTION_CAMERA_MIN_DISTANCE,
+    radius * SECTION_CAMERA_RADIUS_MULTIPLIER,
+  );
+
+  return {
+    lookAt,
+    position: { x: lookAt.x, y: lookAt.y, z: lookAt.z + distance },
+  };
+}
+
 export class Graph3DVisualization {
   private graph: any;
   private container: HTMLElement;
@@ -1036,7 +1100,12 @@ export class Graph3DVisualization {
   }
 
   private moveCameraToNode(node: any): void {
-    const cameraPos = computeCameraPosition(node, 100);
-    this.graph.cameraPosition(cameraPos, node, 1000);
+    const highlight = this.hoverIndex.get(node.id);
+    const frame = computeSectionCameraFrame(
+      this.loadedData?.nodes ?? [node],
+      highlight?.nodeIds ?? new Set([node.id]),
+      node,
+    );
+    this.graph.cameraPosition(frame.position, frame.lookAt, 1000);
   }
 }
