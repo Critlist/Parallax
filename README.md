@@ -11,6 +11,12 @@ Parallax does not parse repositories, call LLMs, build communities, or produce
 graph exports. It adapts an existing graph export into a canonical graph model
 and renders that model with Three.js through `3d-force-graph`.
 
+## Screenshots
+
+![Dense large Graphify export rendered in Parallax](public/screenshots/parallax-large-dense.png)
+
+![Zoomed-out large Graphify export fit in the Parallax viewport](public/screenshots/parallax-large-fit.png)
+
 ## Current Status
 
 This is a shareable prototype, not a finished product. It exists because the
@@ -22,12 +28,6 @@ browser. There is no backend and no upload path; selected files stay local to
 the browser session.
 
 Licensed under MIT. See `LICENSE`.
-
-## Screenshots
-
-![Dense large Graphify export rendered in Parallax](public/screenshots/parallax-large-dense.png)
-
-![Zoomed-out large Graphify export fit in the Parallax viewport](public/screenshots/parallax-large-fit.png)
 
 ## Architecture
 
