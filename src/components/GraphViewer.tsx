@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Graph3DVisualization, GraphNode } from "@/lib/graph3d";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Graph3DVisualization, GraphData, GraphNode } from "@/lib/graph3d";
 import {
   fromGraphifyExport,
   isGraphifyExport,
@@ -9,16 +9,91 @@ import {
   validateGraphReferences,
   GraphifyStats,
 } from "@/lib/graphifyAdapter";
+import { FilterPanel } from "./graph-viewer/FilterPanel";
+import { GraphToolbar } from "./graph-viewer/GraphToolbar";
+import { Legend } from "./graph-viewer/Legend";
+import { LoadPanel } from "./graph-viewer/LoadPanel";
+import { NodeInspector } from "./graph-viewer/NodeInspector";
+import styles from "./graph-viewer/GraphViewer.module.css";
 
 const SAMPLE_URL = "/sample/graph.json";
+const MAX_SEARCH_RESULTS = 12;
+
+function endpointId(endpoint: unknown): string {
+  if (typeof endpoint === "string") return endpoint;
+  if (endpoint && typeof endpoint === "object" && "id" in endpoint) {
+    return String(endpoint.id);
+  }
+  return String(endpoint);
+}
+
+function deriveVisibleGraph(
+  graphData: GraphData | null,
+  disabledTypes: Set<string>,
+): GraphData | null {
+  if (!graphData) return null;
+  const nodes = graphData.nodes
+    .filter((node) => !disabledTypes.has(node.type))
+    .map((node) => ({ ...node }));
+  const visibleIds = new Set(nodes.map((node) => node.id));
+  const links = graphData.links
+    .filter(
+      (link) =>
+        visibleIds.has(endpointId(link.source)) &&
+        visibleIds.has(endpointId(link.target)),
+    )
+    .map((link) => ({ ...link }));
+  return { nodes, links };
+}
+
+function nodeMatchesSearch(node: GraphNode, term: string): boolean {
+  const haystack = [node.id, node.name, node.type, node.filePath]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(term.toLowerCase());
+}
 
 export default function GraphViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const vizRef = useRef<Graph3DVisualization | null>(null);
+  const [sourceGraph, setSourceGraph] = useState<GraphData | null>(null);
   const [stats, setStats] = useState<GraphifyStats | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [disabledTypes, setDisabledTypes] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const visibleGraph = useMemo(
+    () => deriveVisibleGraph(sourceGraph, disabledTypes),
+    [sourceGraph, disabledTypes],
+  );
+
+  const visibleStats = visibleGraph
+    ? {
+        nodeCount: visibleGraph.nodes.length,
+        linkCount: visibleGraph.links.length,
+      }
+    : null;
+
+  const typeCounts = useMemo<Array<[string, number]>>(
+    () =>
+      stats
+        ? Object.entries(stats.fileTypeBreakdown).sort(([a], [b]) =>
+            a.localeCompare(b),
+          )
+        : [],
+    [stats],
+  );
+
+  const searchResults = useMemo(() => {
+    const term = searchTerm.trim();
+    if (!term || !visibleGraph) return [];
+    return visibleGraph.nodes
+      .filter((node) => nodeMatchesSearch(node, term))
+      .slice(0, MAX_SEARCH_RESULTS);
+  }, [searchTerm, visibleGraph]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -31,6 +106,11 @@ export default function GraphViewer() {
       vizRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!visibleGraph) return;
+    vizRef.current?.loadData(visibleGraph);
+  }, [visibleGraph]);
 
   function loadRaw(raw: unknown) {
     if (!isGraphifyExport(raw)) {
@@ -45,7 +125,10 @@ export default function GraphViewer() {
     setError(null);
     const data = fromGraphifyExport(raw);
     setStats(statsFor(raw));
-    vizRef.current?.loadData(data);
+    setSelected(null);
+    setSearchTerm("");
+    setDisabledTypes(new Set());
+    setSourceGraph(data);
   }
 
   async function loadSample() {
@@ -77,113 +160,73 @@ export default function GraphViewer() {
       }
     };
     reader.onerror = () => {
-      // Without this, a failed read never resolves the loading state and
-      // the button stays stuck on "Loading…" forever.
       setError("Could not read that file.");
       setLoading(false);
     };
     reader.readAsText(file);
   }
 
-  return (
-    <div style={{ position: "relative", width: "100vw", height: "100vh" }}>
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+  function toggleType(type: string) {
+    const next = new Set(disabledTypes);
+    if (next.has(type)) {
+      next.delete(type);
+    } else {
+      next.add(type);
+    }
+    if (selected && next.has(selected.type)) {
+      setSelected(null);
+    }
+    setDisabledTypes(next);
+  }
 
-      <div style={panelStyle}>
-        <strong style={{ fontSize: 14 }}>Parallax</strong>
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
-          Renders Graphify (or any node_link_data) exports in 3D.
-        </div>
-        <button onClick={loadSample} disabled={loading} style={buttonStyle}>
-          {loading ? "Loading…" : "Load restoHack sample"}
-        </button>
-        <label
-          style={{
-            ...buttonStyle,
-            display: "inline-block",
-            textAlign: "center",
-          }}
-        >
-          Load graph.json…
-          <input
-            type="file"
-            accept=".json,application/json"
-            onChange={onFilePicked}
-            style={{ display: "none" }}
-          />
-        </label>
-        {error && <div style={{ color: "#ff6b6b", fontSize: 12 }}>{error}</div>}
-        {stats && (
-          <div style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
-            <div>
-              {stats.nodeCount} nodes · {stats.linkCount} edges
-            </div>
-            <div>
-              {stats.communityCount} communities · {stats.hyperedgeCount}{" "}
-              hyperedges
-            </div>
-            {Object.entries(stats.fileTypeBreakdown).map(([type, count]) => (
-              <div key={type} style={{ opacity: 0.75 }}>
-                {type}: {count}
-              </div>
-            ))}
-          </div>
-        )}
+  function focusNode(node: GraphNode) {
+    setSelected(node);
+    vizRef.current?.focusNode(node.id);
+  }
+
+  return (
+    <div className={styles.root}>
+      <div ref={containerRef} className={styles.canvas} />
+
+      <div className={styles.leftStack}>
+        <LoadPanel
+          loading={loading}
+          error={error}
+          stats={stats}
+          visibleStats={visibleStats}
+          onLoadSample={loadSample}
+          onFilePicked={onFilePicked}
+        />
+        <FilterPanel
+          typeCounts={typeCounts}
+          disabledTypes={disabledTypes}
+          onToggleType={toggleType}
+          onClearFilters={() => setDisabledTypes(new Set())}
+        />
       </div>
 
+      <GraphToolbar
+        hasGraph={Boolean(sourceGraph)}
+        hasSelected={Boolean(selected)}
+        searchTerm={searchTerm}
+        searchResults={searchResults}
+        onSearchTermChange={setSearchTerm}
+        onSelectSearchResult={focusNode}
+        onResetView={() => vizRef.current?.resetView()}
+        onFocusSelected={() => {
+          if (selected) vizRef.current?.focusNode(selected.id);
+        }}
+      />
+      <Legend hasGraph={Boolean(sourceGraph)} />
+
       {selected && (
-        // bottom-left is occupied by 3d-force-graph's own controls widget
-        <div
-          style={{
-            ...panelStyle,
-            top: "auto",
-            left: "auto",
-            bottom: 16,
-            right: 16,
-          }}
-        >
-          <strong style={{ fontSize: 13 }}>{String(selected.name)}</strong>
-          <div style={{ fontSize: 12, opacity: 0.8 }}>
-            type: {String(selected.type)}
-          </div>
-          {typeof selected.group === "number" ? (
-            <div style={{ fontSize: 12, opacity: 0.8 }}>
-              community: {selected.group}
-            </div>
-          ) : null}
-          {selected.filePath ? (
-            <div style={{ fontSize: 12, opacity: 0.8 }}>
-              {String(selected.filePath)}
-            </div>
-          ) : null}
-        </div>
+        <NodeInspector
+          node={selected}
+          graphData={sourceGraph}
+          onFocus={() => vizRef.current?.focusNode(selected.id)}
+          onClear={() => setSelected(null)}
+        />
       )}
     </div>
   );
 }
-
-const panelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 16,
-  left: 16,
-  background: "rgba(10,10,10,0.85)",
-  color: "#eee",
-  padding: "12px 14px",
-  borderRadius: 8,
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-  maxWidth: 260,
-  fontFamily: "system-ui, sans-serif",
-  border: "1px solid rgba(255,255,255,0.1)",
-};
-
-const buttonStyle: React.CSSProperties = {
-  background: "#4A90E2",
-  color: "white",
-  border: "none",
-  borderRadius: 6,
-  padding: "6px 10px",
-  fontSize: 12,
-  cursor: "pointer",
-};

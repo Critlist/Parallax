@@ -105,6 +105,7 @@ export class Graph3DVisualization {
   private graph: any;
   private container: HTMLElement;
   private onNodeSelected?: (node: GraphNode) => void;
+  private nodesById = new Map<string, GraphNode>();
   private resizeHandler: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
@@ -209,8 +210,7 @@ export class Graph3DVisualization {
   }
 
   private handleNodeClick(node: any): void {
-    const cameraPos = computeCameraPosition(node, 100);
-    this.graph.cameraPosition(cameraPos, node, 1000);
+    this.moveCameraToNode(node);
     this.onNodeSelected?.(node);
   }
 
@@ -219,7 +219,14 @@ export class Graph3DVisualization {
   }
 
   public loadData(data: GraphData): void {
+    this.nodesById = new Map(data.nodes.map((node) => [node.id, node]));
     this.graph.graphData(data);
+  }
+
+  public focusNode(nodeId: string): void {
+    const node = this.nodesById.get(nodeId);
+    if (!node) return;
+    this.moveCameraToNode(node);
   }
 
   public resetView(): void {
@@ -253,6 +260,12 @@ export class Graph3DVisualization {
         renderer.domElement.parentNode?.removeChild(renderer.domElement);
       }
       this.graph = null;
+      this.nodesById.clear();
     }
+  }
+
+  private moveCameraToNode(node: any): void {
+    const cameraPos = computeCameraPosition(node, 100);
+    this.graph.cameraPosition(cameraPos, node, 1000);
   }
 }

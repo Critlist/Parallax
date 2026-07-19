@@ -6,10 +6,12 @@ still open.
 
 ## Unresolved
 
-1. **Styling approach** - the UI currently uses inline `React.CSSProperties`
-   objects, with no CSS framework or component library. This is acceptable for
-   the small viewer, but should be revisited before building out more panels or
-   workflows.
+1. **UI/UX direction and styling approach** - the UI currently uses inline
+   `React.CSSProperties` objects, with no CSS framework or component library.
+   Before adding more controls, pick a small UI structure that supports graph
+   exploration without burying the canvas. Detailed research notes and staged
+   implementation plan live in
+   `.superpowers/plans/ui-ux-graph-explorer.md`.
 
 ## Resolved In Current Tree
 

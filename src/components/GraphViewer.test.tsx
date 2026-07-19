@@ -8,6 +8,16 @@ import {
 } from "@testing-library/react";
 import GraphViewer from "./GraphViewer";
 
+const { graphInstances } = vi.hoisted(() => ({
+  graphInstances: [] as Array<{
+    loadData: ReturnType<typeof vi.fn>;
+    resetView: ReturnType<typeof vi.fn>;
+    focusNode: ReturnType<typeof vi.fn>;
+    dispose: ReturnType<typeof vi.fn>;
+    selectNode: (node: unknown) => void;
+  }>,
+}));
+
 // The renderer creates a live WebGL context, which jsdom can't provide. These
 // tests exercise GraphViewer's file-loading / validation / error handling, not
 // the renderer (which has its own unit tests), so stub it out entirely.
@@ -16,9 +26,19 @@ vi.mock("@/lib/graph3d", async (importOriginal) => {
   return {
     ...actual,
     Graph3DVisualization: class {
-      loadData() {}
-      resetView() {}
-      dispose() {}
+      loadData = vi.fn();
+      resetView = vi.fn();
+      focusNode = vi.fn();
+      dispose = vi.fn();
+      selectNode: (node: unknown) => void;
+
+      constructor(
+        _container: HTMLElement,
+        options?: { onNodeSelected?: (node: unknown) => void },
+      ) {
+        this.selectNode = (node: unknown) => options?.onNodeSelected?.(node);
+        graphInstances.push(this);
+      }
     },
   };
 });
@@ -26,6 +46,7 @@ vi.mock("@/lib/graph3d", async (importOriginal) => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  graphInstances.length = 0;
 });
 
 function fileInput(): HTMLInputElement {
@@ -107,5 +128,69 @@ describe("GraphViewer file loading", () => {
     expect(
       screen.queryByText(/could not parse that file as json/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("searches loaded nodes and focuses a selected result", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [
+        { id: "a", label: "pline()", file_type: "code", community: 0 },
+        { id: "b", label: "Manual", file_type: "document", community: 1 },
+      ],
+      links: [{ source: "a", target: "b", relation: "references" }],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/2 nodes .* 1 edges/i);
+    fireEvent.change(screen.getByRole("searchbox", { name: /search/i }), {
+      target: { value: "pline" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /pline\(\)/i }));
+
+    expect(graphInstances[0].focusNode).toHaveBeenCalledWith("a");
+    expect(
+      screen.getByRole("region", { name: /selected node/i }),
+    ).toHaveTextContent("pline()");
+    expect(screen.getByText("id: a")).toBeInTheDocument();
+  });
+
+  it("filters visible graph data by node type and shows visible counts", async () => {
+    render(<GraphViewer />);
+    const graph = JSON.stringify({
+      nodes: [
+        { id: "a", label: "main()", file_type: "code", community: 0 },
+        { id: "b", label: "Concept", file_type: "concept", community: 1 },
+        { id: "c", label: "Readme", file_type: "document", community: 1 },
+      ],
+      links: [
+        { source: "a", target: "b", relation: "references" },
+        { source: "b", target: "c", relation: "references" },
+      ],
+    });
+    fireEvent.change(fileInput(), {
+      target: {
+        files: [new File([graph], "graph.json", { type: "application/json" })],
+      },
+    });
+
+    await screen.findByText(/3 nodes .* 2 edges/i);
+    fireEvent.click(screen.getByRole("checkbox", { name: /concept/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/visible: 2 nodes .* 0 edges/i),
+      ).toBeInTheDocument(),
+    );
+    expect(graphInstances[0].loadData).toHaveBeenLastCalledWith({
+      nodes: [
+        expect.objectContaining({ id: "a" }),
+        expect.objectContaining({ id: "c" }),
+      ],
+      links: [],
+    });
   });
 });

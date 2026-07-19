@@ -11,6 +11,12 @@ Parallax does not parse repositories, call LLMs, build communities, or produce
 graph exports. It adapts an existing graph export into a canonical graph model
 and renders that model with Three.js through `3d-force-graph`.
 
+## Screenshots
+
+![Parallax rendering the bundled restoHack Graphify sample](docs/screenshots/parallax-restohack-overview.png)
+
+![Closer view of the bundled sample graph in Parallax](docs/screenshots/parallax-restohack-detail.png)
+
 ## Current Status
 
 This is a shareable prototype, not a finished product. It exists because the
