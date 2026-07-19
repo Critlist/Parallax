@@ -1,9 +1,9 @@
 # Contributing
 
-Keep changes small and reviewable. This repository is currently a focused 3D
-viewer, not a graph extraction tool.
+Keep changes small and easy to inspect. This repository is currently a focused
+3D viewer, not a graph extraction tool.
 
-Before opening a review, run:
+Before publishing changes, run:
 
 ```bash
 bun install

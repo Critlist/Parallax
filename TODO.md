@@ -16,7 +16,9 @@ still open.
    workflows.
 
 3. **No CI** - local lint, format check, typecheck, tests, and production build
-   exist, but there is no GitHub Actions or other CI workflow yet.
+   exist, but there is no GitHub Actions or other CI workflow yet. This is a
+   nice-to-have before collaborative development, not a blocker for sharing the
+   current prototype.
 
 ## Resolved In Current Tree
 

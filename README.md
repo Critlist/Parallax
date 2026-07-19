@@ -1,7 +1,8 @@
 # Parallax
 
 Parallax is a small local Next.js app for viewing semantic code graphs in 3D.
-It was extracted from an older Omnigraph renderer and is currently focused on
+It revives the 3D renderer from Omnigraph, an older Tauri/Rust desktop
+code-visualization experiment, and points it at
 [Graphify](https://github.com/Graphify-Labs/graphify)-style `graph.json`
 exports.
 
@@ -12,9 +13,13 @@ and renders that model with Three.js through `3d-force-graph`.
 
 ## Current Status
 
-This is a shareable review build, not a finished product. The app can load the
-included sample or a local compatible JSON file in the browser. There is no
-backend and no upload path; selected files stay local to the browser session.
+This is a shareable prototype, not a finished product. It exists because the
+Omnigraph renderer was visually useful, and Graphify is now a better engine for
+producing the semantic graph data that renderer needs.
+
+The app can load the included sample or a local compatible JSON file in the
+browser. There is no backend and no upload path; selected files stay local to
+the browser session.
 
 Licensed under MIT. See `LICENSE`.
 
@@ -24,6 +29,7 @@ Licensed under MIT. See `LICENSE`.
 Graphify export -> adapter -> canonical graph model -> Graph3DVisualization -> Three.js / 3d-force-graph
 ```
 
+- Omnigraph supplied the original 3D renderer idea and interaction model.
 - `src/lib/graphifyAdapter.ts` validates and maps Graphify/networkx
   `node_link_data` style exports into the renderer's `GraphData` shape.
 - `src/lib/graph3d.ts` owns the 3D renderer boundary: force graph setup,
