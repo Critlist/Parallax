@@ -20,7 +20,7 @@ metadata, and keep the data on your own machine.
 
 ![Parallax demo with the Click Graphify example](public/screenshots/parallax-demo.gif)
 
-![Click Graphify example loaded in Parallax](public/screenshots/parallax-click-example.png)
+![Click Graphify hover affordance in Parallax](public/screenshots/parallax-click-hover.png)
 
 ![Dense large Graphify export rendered in Parallax](public/screenshots/parallax-large-dense.png)
 
