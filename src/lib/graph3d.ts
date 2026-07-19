@@ -113,6 +113,12 @@ export function linkKey(source: unknown, target: unknown): string {
   return `${endpointId(source)}->${endpointId(target)}`;
 }
 
+const EMPTY_HIGHLIGHT: HoverHighlight = {
+  nodeIds: new Set(),
+  linkKeys: new Set(),
+};
+const DIMMED_LINK_COLOR = "#222222";
+
 /**
  * The hover affordance answers "what is this node connected to?" — the hovered
  * node plus its direct neighbors and the links between them. Empty when nothing
@@ -203,6 +209,9 @@ export class Graph3DVisualization {
   private container: HTMLElement;
   private onNodeSelected?: (node: GraphNode) => void;
   private nodesById = new Map<string, GraphNode>();
+  private nodeMeshes = new Map<string, THREE.Mesh>();
+  private loadedData: GraphData | null = null;
+  private hoveredId: string | null = null;
   private resizeHandler: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
@@ -248,12 +257,10 @@ export class Graph3DVisualization {
       .backgroundColor("#0a0a0a")
       .showNavInfo(false)
       .linkOpacity(0.4)
-      .linkWidth(0.6)
+      .linkWidth((l: any) => this.linkWidthFor(l))
       .linkDirectionalParticles((l: any) => linkParticleCount(l))
       .linkDirectionalParticleSpeed((l: any) => linkParticleSpeed(l))
-      .linkColor((l: any) =>
-        l.confidence === "INFERRED" ? "#886644" : "#4A90E2",
-      )
+      .linkColor((l: any) => this.linkColorFor(l))
       .nodeLabel((n: any) =>
         typeof n.group === "number"
           ? `${n.name} (${n.type}, community ${n.group})`
@@ -265,9 +272,13 @@ export class Graph3DVisualization {
         const material = new THREE.MeshLambertMaterial({
           color: this.getNodeColor(node),
           transparent: true,
-          opacity: 0.9,
+          opacity: BASE_NODE_OPACITY,
+          emissive: new THREE.Color(0x000000),
+          emissiveIntensity: 0,
         });
-        return new THREE.Mesh(geometry, material);
+        const mesh = new THREE.Mesh(geometry, material);
+        this.nodeMeshes.set(node.id, mesh);
+        return mesh;
       })
       .onNodeClick(this.handleNodeClick.bind(this))
       .onNodeHover(this.handleNodeHover.bind(this));
@@ -306,6 +317,49 @@ export class Graph3DVisualization {
     return TYPE_COLORS[node.type] || "#7ED321";
   }
 
+  private currentHighlight(): HoverHighlight {
+    if (this.hoveredId === null || !this.loadedData) return EMPTY_HIGHLIGHT;
+    return computeHoverHighlight(this.loadedData, this.hoveredId);
+  }
+
+  private linkColorFor(link: any): string {
+    const base = link.confidence === "INFERRED" ? "#886644" : "#4A90E2";
+    if (this.hoveredId === null) return base;
+    return this.currentHighlight().linkKeys.has(
+      linkKey(link.source, link.target),
+    )
+      ? base
+      : DIMMED_LINK_COLOR;
+  }
+
+  private linkWidthFor(link: any): number {
+    if (this.hoveredId === null) return 0.6;
+    return this.currentHighlight().linkKeys.has(
+      linkKey(link.source, link.target),
+    )
+      ? 1.5
+      : 0.6;
+  }
+
+  private applyHoverHighlight(): void {
+    const highlight = this.currentHighlight();
+    for (const [id, mesh] of this.nodeMeshes) {
+      const emphasis = nodeEmphasis(id, this.hoveredId, highlight);
+      const material = mesh.material as THREE.MeshLambertMaterial;
+      material.opacity = emphasis.opacity;
+      material.emissiveIntensity = emphasis.emissiveIntensity;
+      material.emissive =
+        emphasis.emissiveIntensity > 0
+          ? material.color.clone()
+          : new THREE.Color(0x000000);
+    }
+    // Links are not custom three objects, so re-registering the accessors and
+    // refreshing is how their color/width pick up the new hover state.
+    this.graph.linkColor((l: any) => this.linkColorFor(l));
+    this.graph.linkWidth((l: any) => this.linkWidthFor(l));
+    this.graph.refresh();
+  }
+
   private handleNodeClick(node: any): void {
     this.moveCameraToNode(node);
     this.onNodeSelected?.(node);
@@ -313,10 +367,16 @@ export class Graph3DVisualization {
 
   private handleNodeHover(node: any): void {
     this.container.style.cursor = node ? "pointer" : "default";
+    this.hoveredId = node ? node.id : null;
+    this.applyHoverHighlight();
   }
 
   public loadData(data: GraphData): void {
     this.nodesById = new Map(data.nodes.map((node) => [node.id, node]));
+    this.loadedData = data;
+    // Drop meshes from any previous graph; graphData() rebuilds them via
+    // nodeThreeObject for the new node set.
+    this.nodeMeshes.clear();
     this.graph.graphData(data);
   }
 
@@ -362,6 +422,9 @@ export class Graph3DVisualization {
       }
       this.graph = null;
       this.nodesById.clear();
+      this.nodeMeshes.clear();
+      this.loadedData = null;
+      this.hoveredId = null;
     }
   }
 
