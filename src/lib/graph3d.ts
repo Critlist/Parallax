@@ -38,6 +38,12 @@ export interface Graph3DVisualizationOptions {
   onNodeSelected?: (node: GraphNode) => void;
 }
 
+interface HoverEdge {
+  line: THREE.Line;
+  source: Vec3;
+  target: Vec3;
+}
+
 const TYPE_COLORS: Record<string, string> = {
   // Graphify file_type buckets
   code: "#4A90E2",
@@ -165,11 +171,43 @@ export function linkKey(source: unknown, target: unknown): string {
   return `${endpointId(source)}->${endpointId(target)}`;
 }
 
+function endpointPosition(endpoint: unknown): Vec3 | null {
+  if (!endpoint || typeof endpoint !== "object") return null;
+  const candidate = endpoint as Partial<Vec3>;
+  if (
+    typeof candidate.x !== "number" ||
+    typeof candidate.y !== "number" ||
+    typeof candidate.z !== "number" ||
+    !Number.isFinite(candidate.x) ||
+    !Number.isFinite(candidate.y) ||
+    !Number.isFinite(candidate.z)
+  ) {
+    return null;
+  }
+  return candidate as Vec3;
+}
+
+function createHoverEdgeLine(source: Vec3, target: Vec3): THREE.Line {
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(source.x, source.y, source.z),
+    new THREE.Vector3(target.x, target.y, target.z),
+  ]);
+  const material = new THREE.LineBasicMaterial({
+    color: HOVER_EDGE_COLOR,
+    transparent: true,
+    opacity: HOVER_EDGE_OPACITY,
+    linewidth: HOVER_EDGE_WIDTH,
+  });
+  return new THREE.Line(geometry, material);
+}
+
 const EMPTY_HIGHLIGHT: HoverHighlight = {
   nodeIds: new Set(),
   linkKeys: new Set(),
 };
-const DIMMED_LINK_COLOR = "#222222";
+const HOVER_EDGE_COLOR = "#ffffff";
+const HOVER_EDGE_OPACITY = 0.86;
+const HOVER_EDGE_WIDTH = 2;
 
 /**
  * The hover affordance answers "what is this node connected to?" — the hovered
@@ -275,6 +313,8 @@ export class Graph3DVisualization {
   private onNodeSelected?: (node: GraphNode) => void;
   private nodesById = new Map<string, GraphNode>();
   private nodeMeshes = new Map<string, THREE.Mesh>();
+  private hoverEdgeGroup = new THREE.Group();
+  private hoverEdges: HoverEdge[] = [];
   private loadedData: GraphData | null = null;
   private hoveredId: string | null = null;
   private hoverEnabled = true;
@@ -326,10 +366,12 @@ export class Graph3DVisualization {
       .backgroundColor("#0a0a0a")
       .showNavInfo(false)
       .linkOpacity(0.4)
-      .linkWidth((l: any) => this.linkWidthFor(l))
+      .linkWidth(0.6)
       .linkDirectionalParticles((l: any) => linkParticleCount(l))
       .linkDirectionalParticleSpeed((l: any) => linkParticleSpeed(l))
-      .linkColor((l: any) => this.linkColorFor(l))
+      .linkColor((l: any) =>
+        l.confidence === "INFERRED" ? "#886644" : "#4A90E2",
+      )
       .nodeLabel((n: any) =>
         typeof n.group === "number"
           ? `${n.name} (${n.type}, community ${n.group})`
@@ -353,10 +395,12 @@ export class Graph3DVisualization {
       .onNodeHover(this.handleNodeHover.bind(this))
       .onEngineTick(() => {
         this.engineRunning = true;
+        this.updateHoverEdgePositions();
       })
       .onEngineStop(() => this.handleEngineStop());
 
     const scene = this.graph.scene();
+    scene.add(this.hoverEdgeGroup);
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     // A DirectionalLight emits along its position→target vector; left at the
     // default (0,0,0) it points nowhere and contributes no shading. Offset it
@@ -396,25 +440,6 @@ export class Graph3DVisualization {
       : EMPTY_HIGHLIGHT;
   }
 
-  private linkColorFor(link: any): string {
-    const base = link.confidence === "INFERRED" ? "#886644" : "#4A90E2";
-    if (!this.hoverEnabled || this.hoveredId === null) return base;
-    return this.currentHoverHighlight().linkKeys.has(
-      linkKey(link.source, link.target),
-    )
-      ? base
-      : DIMMED_LINK_COLOR;
-  }
-
-  private linkWidthFor(link: any): number {
-    if (!this.hoverEnabled || this.hoveredId === null) return 0.6;
-    return this.currentHoverHighlight().linkKeys.has(
-      linkKey(link.source, link.target),
-    )
-      ? 1.5
-      : 0.6;
-  }
-
   /**
    * The hover affordance restyles the node meshes we own, in place. It must
    * NOT call `graph.refresh()` or re-register link/node accessors: those set
@@ -423,7 +448,8 @@ export class Graph3DVisualization {
    * mutations (visible flash) and locks on large graphs. `3d-force-graph` runs
    * a continuous render loop, so mutating an existing material shows next frame
    * on its own. Links keep their static styling; edge information is carried by
-   * the always-on flow particles.
+   * link + directional-particle system. Incident edge emphasis is drawn by
+   * our own overlay group of line objects, which can be mutated directly.
    */
   private applyHoverHighlight(): void {
     const highlight = this.currentHoverHighlight();
@@ -437,6 +463,56 @@ export class Graph3DVisualization {
           ? material.color.clone()
           : new THREE.Color(0x000000);
     }
+    this.applyHoverEdgeHighlight(highlight);
+  }
+
+  private applyHoverEdgeHighlight(highlight: HoverHighlight): void {
+    this.clearHoverEdges();
+    if (!this.hoverEnabled || this.hoveredId === null || !this.loadedData) {
+      return;
+    }
+    for (const link of this.loadedData.links) {
+      if (!highlight.linkKeys.has(linkKey(link.source, link.target))) {
+        continue;
+      }
+      const source = endpointPosition(link.source);
+      const target = endpointPosition(link.target);
+      if (!source || !target) continue;
+      const line = createHoverEdgeLine(source, target);
+      this.hoverEdges.push({ line, source, target });
+      this.hoverEdgeGroup.add(line);
+    }
+  }
+
+  private updateHoverEdgePositions(): void {
+    for (const edge of this.hoverEdges) {
+      const positions = edge.line.geometry.getAttribute("position");
+      if (!positions) continue;
+      positions.setXYZ(0, edge.source.x, edge.source.y, edge.source.z);
+      positions.setXYZ(1, edge.target.x, edge.target.y, edge.target.z);
+      positions.needsUpdate = true;
+      edge.line.geometry.computeBoundingSphere();
+    }
+  }
+
+  private clearHoverEdges(): void {
+    for (const edge of [...this.hoverEdgeGroup.children]) {
+      this.hoverEdgeGroup.remove(edge);
+      const geometry = (edge as { geometry?: { dispose?: () => void } })
+        .geometry;
+      geometry?.dispose?.();
+      const material = (
+        edge as {
+          material?: { dispose?: () => void } | Array<{ dispose?: () => void }>;
+        }
+      ).material;
+      if (Array.isArray(material)) {
+        material.forEach((m) => m.dispose?.());
+      } else {
+        material?.dispose?.();
+      }
+    }
+    this.hoverEdges = [];
   }
 
   private handleNodeClick(node: any): void {
@@ -546,6 +622,7 @@ export class Graph3DVisualization {
       this.graph = null;
       this.nodesById.clear();
       this.nodeMeshes.clear();
+      this.clearHoverEdges();
       this.loadedData = null;
       this.hoveredId = null;
       this.hoverEnabled = true;

@@ -6,6 +6,8 @@ const captured = vi.hoisted(() => ({
   nodeObj: { current: null as ((n: unknown) => unknown) | null },
   linkColor: { current: null as ((l: unknown) => string) | null },
   linkWidth: { current: null as ((l: unknown) => number) | null },
+  engineTick: { current: null as (() => void) | null },
+  sceneAdds: [] as unknown[],
   refresh: vi.fn(),
 }));
 
@@ -22,12 +24,16 @@ vi.mock("3d-force-graph", () => {
     "graphData",
     "cameraPosition",
     "zoomToFit",
-    "onEngineTick",
     "onEngineStop",
   ];
   const makeGraph = () => {
+    const scene = {
+      add: (obj: unknown) => {
+        captured.sceneAdds.push(obj);
+      },
+    };
     const graph: Record<string, unknown> = {
-      scene: () => ({ add: () => {} }),
+      scene: () => scene,
       _destructor: vi.fn(),
       refresh: captured.refresh,
     };
@@ -52,6 +58,10 @@ vi.mock("3d-force-graph", () => {
       captured.hover.current = fn;
       return graph;
     };
+    graph.onEngineTick = (fn: () => void) => {
+      captured.engineTick.current = fn;
+      return graph;
+    };
     return graph;
   };
   return { default: () => () => makeGraph() };
@@ -68,6 +78,8 @@ afterEach(() => {
   captured.nodeObj.current = null;
   captured.linkColor.current = null;
   captured.linkWidth.current = null;
+  captured.engineTick.current = null;
+  captured.sceneAdds.length = 0;
 });
 
 describe("Graph3DVisualization link flow", () => {
@@ -137,25 +149,56 @@ describe("Graph3DVisualization hover affordance", () => {
     viz.dispose();
   });
 
-  it("fades and de-emphasizes links not incident to the hovered node", () => {
+  it("draws incident links in an owned overlay layer", () => {
     const viz = new Graph3DVisualization(document.createElement("div"));
-    viz.loadData(data);
+    const positionedData: GraphData = {
+      nodes: data.nodes,
+      links: [
+        {
+          source: { id: "a", x: 1, y: 2, z: 3 },
+          target: { id: "b", x: 4, y: 5, z: 6 },
+          type: "calls",
+        } as never,
+      ],
+    };
+    viz.loadData(positionedData);
     buildMeshes();
+    const overlay = captured.sceneAdds.find(
+      (obj) => obj instanceof THREE.Group,
+    ) as THREE.Group | undefined;
 
     captured.hover.current?.({ id: "a" });
 
-    expect(captured.linkColor.current?.({ source: "a", target: "b" })).not.toBe(
-      "#222222",
-    );
-    expect(captured.linkWidth.current?.({ source: "a", target: "b" })).toBe(
-      1.5,
-    );
-    expect(captured.linkColor.current?.({ source: "b", target: "c" })).toBe(
-      "#222222",
-    );
-    expect(captured.linkWidth.current?.({ source: "b", target: "c" })).toBe(
-      0.6,
-    );
+    expect(overlay).toBeDefined();
+    expect(overlay?.children).toHaveLength(1);
+    expect(overlay?.children[0]).toBeInstanceOf(THREE.Line);
+    viz.dispose();
+  });
+
+  it("updates owned hover-edge positions on engine ticks", () => {
+    const viz = new Graph3DVisualization(document.createElement("div"));
+    const source = { id: "a", x: 1, y: 2, z: 3 };
+    const target = { id: "b", x: 4, y: 5, z: 6 };
+    viz.loadData({
+      nodes: data.nodes,
+      links: [{ source, target, type: "calls" } as never],
+    });
+    buildMeshes();
+    captured.hover.current?.({ id: "a" });
+    const overlay = captured.sceneAdds.find(
+      (obj) => obj instanceof THREE.Group,
+    ) as THREE.Group;
+    const line = overlay.children[0] as THREE.Line;
+    const positions = line.geometry.getAttribute("position");
+
+    source.x = 10;
+    source.y = 11;
+    source.z = 12;
+    captured.engineTick.current?.();
+
+    expect(positions.getX(0)).toBe(10);
+    expect(positions.getY(0)).toBe(11);
+    expect(positions.getZ(0)).toBe(12);
     viz.dispose();
   });
 
@@ -167,11 +210,15 @@ describe("Graph3DVisualization hover affordance", () => {
     captured.hover.current?.({ id: "a" });
     captured.hover.current?.(null);
 
+    const overlay = captured.sceneAdds.find(
+      (obj) => obj instanceof THREE.Group,
+    ) as THREE.Group | undefined;
     const mat = meshes.c.material as THREE.MeshLambertMaterial;
     expect(mat.opacity).toBe(0.9);
     expect(
       (meshes.a.material as THREE.MeshLambertMaterial).emissiveIntensity,
     ).toBe(0);
+    expect(overlay?.children).toHaveLength(0);
     viz.dispose();
   });
 
