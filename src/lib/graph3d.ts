@@ -34,6 +34,10 @@ export interface GraphData {
   links: GraphLink[];
 }
 
+export interface Graph3DVisualizationOptions {
+  onNodeSelected?: (node: GraphNode) => void;
+}
+
 const TYPE_COLORS: Record<string, string> = {
   // Graphify file_type buckets
   code: "#4A90E2",
@@ -100,11 +104,16 @@ export function computeCameraPosition(node: Vec3, distance: number): Vec3 {
 export class Graph3DVisualization {
   private graph: any;
   private container: HTMLElement;
+  private onNodeSelected?: (node: GraphNode) => void;
   private resizeHandler: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
-  constructor(container: HTMLElement) {
+  constructor(
+    container: HTMLElement,
+    options: Graph3DVisualizationOptions = {},
+  ) {
     this.container = container;
+    this.onNodeSelected = options.onNodeSelected;
     this.initializeGraph();
     this.setupResizeListener();
   }
@@ -202,8 +211,7 @@ export class Graph3DVisualization {
   private handleNodeClick(node: any): void {
     const cameraPos = computeCameraPosition(node, 100);
     this.graph.cameraPosition(cameraPos, node, 1000);
-
-    window.dispatchEvent(new CustomEvent("node-selected", { detail: node }));
+    this.onNodeSelected?.(node);
   }
 
   private handleNodeHover(node: any): void {

@@ -6,19 +6,10 @@ still open.
 
 ## Unresolved
 
-1. **Selection event bus** - `src/lib/graph3d.ts` dispatches a window-level
-   `node-selected` `CustomEvent`. This works for the current single-viewer UI,
-   but it is a coupling smell if more UI needs to react to selection later.
-
-2. **Styling approach** - the UI currently uses inline `React.CSSProperties`
+1. **Styling approach** - the UI currently uses inline `React.CSSProperties`
    objects, with no CSS framework or component library. This is acceptable for
    the small viewer, but should be revisited before building out more panels or
    workflows.
-
-3. **No CI** - local lint, format check, typecheck, tests, and production build
-   exist, but there is no GitHub Actions or other CI workflow yet. This is a
-   nice-to-have before collaborative development, not a blocker for sharing the
-   current prototype.
 
 ## Resolved In Current Tree
 
@@ -46,6 +37,14 @@ still open.
    through but not yet wired to a visual channel.
 
 7. **License undecided** - the project now has an MIT license in `LICENSE`.
+
+8. **No CI** - GitHub Actions now runs frozen install, format check, lint,
+   typecheck, tests, and production build in `.github/workflows/ci.yml`.
+
+9. **Selection event bus** - `Graph3DVisualization` now accepts an
+   `onNodeSelected` callback, and `GraphViewer` passes `setSelected` directly
+   instead of using a window-level `node-selected` `CustomEvent`. Covered by
+   `src/lib/graph3d.selection.test.ts` and `src/components/GraphViewer.test.tsx`.
 
 ## Checked, Not Issues
 

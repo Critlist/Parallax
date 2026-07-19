@@ -22,13 +22,11 @@ export default function GraphViewer() {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    vizRef.current = new Graph3DVisualization(containerRef.current);
-
-    const onSelect = (e: Event) => setSelected((e as CustomEvent).detail);
-    window.addEventListener("node-selected", onSelect);
+    vizRef.current = new Graph3DVisualization(containerRef.current, {
+      onNodeSelected: setSelected,
+    });
 
     return () => {
-      window.removeEventListener("node-selected", onSelect);
       vizRef.current?.dispose();
       vizRef.current = null;
     };
